@@ -57,6 +57,14 @@ export default function CellCreationPills({ onAddCell }: CellCreationPillsProps)
             </Button>
             <Button
               variant="ghost"
+              className="flex justify-start items-center px-2 py-1 text-sm hover:bg-purple-50 transition-colors duration-200"
+              onClick={() => handleAddCell("code_index_query")}
+            >
+              <CodeIcon className="h-4 w-4 mr-2 text-purple-700" />
+              <span>Code Index Query</span>
+            </Button>
+            <Button
+              variant="ghost"
               className="flex justify-start items-center px-2 py-1 text-sm hover:bg-emerald-50 transition-colors duration-200"
               onClick={() => handleAddCell("python")}
             >

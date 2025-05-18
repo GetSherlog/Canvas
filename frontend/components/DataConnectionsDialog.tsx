@@ -21,23 +21,26 @@ import {
   Github,
   Folder,
   RefreshCw,
+  Pencil, // Added Pencil icon
+  Code, // Added Code icon
 } from "lucide-react"
-import type { ConnectionType } from "../store/types"
+import type { Connection, ConnectionType } from "../store/types" // Added Connection
 import { useToast } from "@/hooks/use-toast"
 import GitHubConnectionForm from "./connection-forms/GitHubConnectionForm"
 import JiraConnectionForm from "./connection-forms/JiraConnectionForm"
 import FileSystemConnectionForm from "./connection-forms/FileSystemConnectionForm"
-import { GitRepoConnectionForm } from "./connection-forms/GitRepoConnectionForm"
+import { CodeIndexConnectionForm } from "./connection-forms/GitRepoConnectionForm"
 
 interface DataConnectionsDialogProps {
   isOpen: boolean
   onClose: () => void
-  initialPage?: "list" | "add"
+  initialPage?: "list" | "add" | "edit" // Added "edit"
 }
 
 const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, onClose, initialPage = "list" }) => {
-  const [page, setPage] = useState<"list" | "add">(initialPage)
-  const [newConnection, setNewConnection] = useState<{
+  const [page, setPage] = useState<"list" | "add" | "edit">(initialPage) // Added "edit"
+  const [currentConnection, setCurrentConnection] = useState<{ // Renamed from newConnection for clarity
+    id?: string // Added id for editing
     name: string
     type: ConnectionType | ""
     config: Record<string, any>
@@ -49,6 +52,7 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
   const [testResult, setTestResult] = useState<{ valid: boolean; message: string } | null>(null)
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [isCreatingConnection, setIsCreatingConnection] = useState(false)
+  const [isUpdatingConnection, setIsUpdatingConnection] = useState(false) // Added for update
   const [dialogError, setDialogError] = useState<string | null>(null)
   const [reindexingStates, setReindexingStates] = useState<Record<string, boolean>>({})
   const { toast } = useToast()
@@ -61,6 +65,7 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
     availableTypes,
     loadConnections,
     createConnection,
+    updateConnection, // Added updateConnection
     deleteConnection,
     testConnection,
     reindexConnection,
@@ -76,11 +81,11 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
 
   // Effect to set default type for the form *after* types load from store
   useEffect(() => {
-    if (isOpen && availableTypes.length > 0 && !newConnection.type) {
-        setNewConnection(prev => ({ ...prev, type: availableTypes[0] as ConnectionType }));
+    if (isOpen && availableTypes.length > 0 && !currentConnection.type) {
+        setCurrentConnection(prev => ({ ...prev, type: availableTypes[0] as ConnectionType }));
     }
     // Only run when types array changes or dialog opens
-  }, [isOpen, availableTypes, newConnection.type]) 
+  }, [isOpen, availableTypes, currentConnection.type]) 
 
   // Update page state if initialPage prop changes while dialog is open
   useEffect(() => {
@@ -92,31 +97,36 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
   // Reset state when dialog closes
   useEffect(() => {
     if (!isOpen) {
-      setPage("list")
+      setPage("list") // Default to list view when closing
       resetForm()
     }
   }, [isOpen])
 
-  const resetForm = () => {
-    setNewConnection({
-      name: "",
-      // Reset using types from store
-      type: availableTypes.length > 0 ? availableTypes[0] as ConnectionType : "",
-      config: {},
-    })
+  const resetForm = (isEditMode = false) => {
+    // If not in edit mode, reset to default new connection state
+    // If in edit mode, this function might be called to clear errors but preserve currentConnection data
+    if (!isEditMode) {
+      setCurrentConnection({
+        id: undefined,
+        name: "",
+        type: availableTypes.length > 0 ? availableTypes[0] as ConnectionType : "",
+        config: {},
+      });
+    }
     setTestResult(null)
     setDialogError(null)
     setIsTestingConnection(false)
     setIsCreatingConnection(false)
+    setIsUpdatingConnection(false) // Reset update state
   }
 
   const handleInputChange = (field: string, value: string) => {
-    setNewConnection((prev) => ({ ...prev, [field]: value }))
+    setCurrentConnection((prev) => ({ ...prev, [field]: value }))
     setDialogError(null)
   }
 
   const handleConfigChange = (field: string, value: string | boolean | string[]) => {
-    setNewConnection((prev) => ({
+    setCurrentConnection((prev) => ({
       ...prev,
       config: {
         ...prev.config,
@@ -131,7 +141,7 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
     setDialogError(null)
 
     // Check if a valid type is selected
-    if (!newConnection.type) {
+    if (!currentConnection.type) {
       setDialogError("Please select a connection type.");
       return; 
     }
@@ -140,7 +150,7 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
 
     try {
       // Type is guaranteed to be valid ConnectionType here
-      const result = await testConnection(newConnection as { type: ConnectionType; [key: string]: any })
+      const result = await testConnection(currentConnection as { type: ConnectionType; [key: string]: any })
       setTestResult(result)
     } catch (err) {
       console.error("Failed to test connection:", err)
@@ -156,13 +166,13 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
   }
 
   const handleCreateConnection = async () => {
-    if (!newConnection.name.trim()) {
+    if (!currentConnection.name.trim()) {
       setDialogError("Connection name is required")
       return
     }
 
     // Check if a valid type is selected
-    if (!newConnection.type) {
+    if (!currentConnection.type) {
       setDialogError("Please select a connection type.");
       return; 
     }
@@ -172,9 +182,9 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
 
     try {
       // Type is guaranteed to be valid ConnectionType here
-      const result = await createConnection(newConnection as { name: string; type: ConnectionType; [key: string]: any })
+      const result = await createConnection(currentConnection as { name: string; type: ConnectionType; [key: string]: any })
       if (result) {
-        resetForm()
+        resetForm() // Reset form for new connection
         setPage("list")
         toast({
           title: "Connection created",
@@ -207,9 +217,72 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
       }
       setDialogError(errorMessage)
     } finally {
-      setIsCreatingConnection(false)
+        setIsCreatingConnection(false)
     }
   }
+
+  const handleEditClick = (connection: Connection) => {
+    // Fetch the full connection details if config is not already complete
+    // For now, assume `connection.config` from the list is sufficient for pre-filling.
+    // If not, an API call to `getConnection(id)` would be needed here.
+    setCurrentConnection({
+      id: connection.id,
+      name: connection.name,
+      type: connection.type as ConnectionType, // Cast as it's a known type from existing connection
+      config: connection.config || {}, // Ensure config is an object
+    });
+    setPage("edit");
+    setTestResult(null); // Clear previous test results
+    setDialogError(null); // Clear previous errors
+  };
+
+  const handleUpdateConnection = async () => {
+    if (!currentConnection.id || !currentConnection.type) {
+      setDialogError("Connection ID and type are required for update.");
+      return;
+    }
+    if (!currentConnection.name.trim()) {
+      setDialogError("Connection name is required");
+      return;
+    }
+
+    setDialogError(null);
+    setIsUpdatingConnection(true);
+
+    try {
+      const result = await updateConnection(currentConnection.id, currentConnection as Connection);
+      if (result) {
+        resetForm(); // Reset form after successful update
+        setPage("list");
+        toast({
+          title: "Connection updated",
+          description: `${result.name} has been successfully updated.`,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to update connection:", err);
+      let errorMessage = "An unknown error occurred during update.";
+      if (err instanceof Error) {
+        try {
+          const errorDetail = JSON.parse(err.message);
+          if (Array.isArray(errorDetail.detail)) {
+            errorMessage = errorDetail.detail.map((d: any) =>
+              `Field '${d.loc.slice(1).join('.')}': ${d.msg}`
+            ).join('; ');
+          } else if (errorDetail.detail) {
+            errorMessage = String(errorDetail.detail);
+          } else {
+            errorMessage = err.message;
+          }
+        } catch (parseError) {
+          errorMessage = err.message;
+        }
+      }
+      setDialogError(errorMessage);
+    } finally {
+      setIsUpdatingConnection(false);
+    }
+  };
 
   const handleDeleteConnection = async (id: string, name: string) => {
     try {
@@ -261,8 +334,8 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
         return <Database className="h-5 w-5 text-primary" />
       case "filesystem":
         return <Folder className="h-5 w-5 text-primary" />
-      case "git_repo":
-        return <Github className="h-5 w-5 text-primary" />
+      case "code_index":
+        return <Code className="h-5 w-5 text-primary" />
       default:
         return <Database className="h-5 w-5 text-muted-foreground" />
     }
@@ -338,12 +411,22 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
                           <Button
                             variant="ghost"
                             size="sm"
+                            onClick={() => handleEditClick(connection)}
+                            className="transition-all duration-200 hover:bg-blue-50"
+                            title="Edit Connection"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => handleDeleteConnection(connection.id, connection.name)}
                             className="transition-all duration-200 hover:bg-red-50"
+                            title="Delete Connection"
                           >
                             <Trash className="h-4 w-4" />
                           </Button>
-                          {connection.type === "git_repo" && (
+                          {connection.type === "code_index" && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -371,17 +454,23 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
     )
   }
 
-  const renderAddConnectionForm = () => {
+  const renderConnectionForm = (isEditMode: boolean) => {
+    const formTitle = isEditMode ? "Edit Connection" : "Add New Connection";
+    const submitButtonText = isEditMode ? "Update Connection" : "Create Connection";
+    const handleSubmit = isEditMode ? handleUpdateConnection : handleCreateConnection;
+    const isLoading = isEditMode ? isUpdatingConnection : isCreatingConnection;
+
     return (
       <div className="space-y-4">
         <div className="flex items-center">
-          {initialPage === "list" && (
-            <Button variant="ghost" size="sm" onClick={() => setPage("list")} className="mr-2">
+          {/* Show back button if not opened directly to add/edit page */}
+          {(initialPage === "list" || page === "edit") && ( 
+            <Button variant="ghost" size="sm" onClick={() => { setPage("list"); resetForm(); }} className="mr-2">
               <ArrowLeft className="h-4 w-4 mr-1" />
               Back
             </Button>
           )}
-          <h2 className="text-xl font-semibold">Add New Connection</h2>
+          <h2 className="text-xl font-semibold">{formTitle}</h2>
         </div>
 
         <div className="grid gap-4">
@@ -389,18 +478,18 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
             <Label htmlFor="type">Connection Type</Label>
             <select
               id="type"
-              value={newConnection.type}
+              value={currentConnection.type}
               onChange={(e) => {
-                setNewConnection((prev) => ({ 
-                  ...prev, 
-                  type: e.target.value as ConnectionType, 
-                  config: {} 
+                setCurrentConnection((prev) => ({
+                  ...prev,
+                  type: e.target.value as ConnectionType,
+                  config: {}, // Reset config when type changes
                 }));
                 setTestResult(null);
                 setDialogError(null);
               }}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-white"
-              disabled={availableTypes.length === 0}
+              disabled={isEditMode || availableTypes.length === 0} // Disable type change in edit mode
             >
               <option value="" disabled hidden>Select Type...</option>
               {availableTypes.map(type => (
@@ -409,43 +498,44 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
                 </option>
               ))}
             </select>
+             {isEditMode && <p className="text-xs text-muted-foreground">Connection type cannot be changed after creation.</p>}
           </div>
           <div className="grid gap-2">
             <Label htmlFor="name">Connection Name</Label>
             <Input
               id="name"
-              value={newConnection.name}
+              value={currentConnection.name}
               onChange={(e) => handleInputChange("name", e.target.value)}
               placeholder="Enter connection name"
               className="w-full"
             />
           </div>
 
-          {newConnection.type === "github" && (
-            <GitHubConnectionForm 
-              config={newConnection.config}
+          {currentConnection.type === "github" && (
+            <GitHubConnectionForm
+              config={currentConnection.config}
               onConfigChange={handleConfigChange}
             />
           )}
 
-          {newConnection.type === "jira" && (
-             <JiraConnectionForm 
-              config={newConnection.config}
+          {currentConnection.type === "jira" && (
+            <JiraConnectionForm
+              config={currentConnection.config}
               onConfigChange={handleConfigChange}
             />
           )}
 
-          {newConnection.type === "filesystem" && (
+          {currentConnection.type === "filesystem" && (
             <FileSystemConnectionForm
-              config={newConnection.config}
+              config={currentConnection.config}
               onConfigChange={handleConfigChange}
             />
           )}
 
-          {newConnection.type === "git_repo" && (
-            <GitRepoConnectionForm
-              config={newConnection.config}
-              updateConfig={(newConf: Record<string, any>) => setNewConnection(prev => ({ ...prev, config: newConf }))}
+          {currentConnection.type === "code_index" && (
+            <CodeIndexConnectionForm
+              config={currentConnection.config}
+              updateConfig={(newConf: Record<string, any>) => setCurrentConnection(prev => ({ ...prev, config: newConf }))}
               isTesting={isTestingConnection}
             />
           )}
@@ -477,29 +567,37 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
           )}
 
           <div className="flex justify-end space-x-2 mt-4">
+            {/* Test button can be added here if needed for edit mode too */}
             <Button
-              onClick={handleCreateConnection}
-              disabled={!newConnection.name || !newConnection.type || isTestingConnection || isCreatingConnection}
+              onClick={handleSubmit}
+              disabled={!currentConnection.name || !currentConnection.type || isTestingConnection || isLoading}
             >
-              {isCreatingConnection ? (
+              {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
+                  {isEditMode ? "Updating..." : "Creating..."}
                 </>
               ) : (
-                "Create Connection"
+                submitButtonText
               )}
             </Button>
           </div>
         </div>
       </div>
-    )
-  }
+    );
+  };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      if (!open) {
+        resetForm(); // Reset form when dialog is closed by any means
+      }
+      onClose();
+    }}>
       <DialogContent className="bg-white max-w-3xl">
-        {page === "list" ? renderConnectionsList() : renderAddConnectionForm()}
+        {page === "list" && renderConnectionsList()}
+        {page === "add" && renderConnectionForm(false)}
+        {page === "edit" && renderConnectionForm(true)}
       </DialogContent>
     </Dialog>
   )

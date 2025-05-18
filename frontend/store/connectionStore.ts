@@ -199,12 +199,16 @@ export const useConnectionStore = create<ConnectionState>()(
             set((state) => ({
               connections: state.connections.map((conn) => (conn.id === id ? updatedConnection : conn)),
             }))
-            return updatedConnection
-          } catch (err) {
-            console.error("Failed to update connection:", err)
-            return null
-          }
-        },
+    return updatedConnection
+  } catch (err) {
+    console.error("useConnectionStore: Failed to update connection:", err)
+    // Propagate the error message for the UI to display
+    if (err instanceof Error) {
+        throw err;
+    }
+    throw new Error("An unknown error occurred while updating the connection.")
+  }
+},
 
         // Delete a connection
         deleteConnection: async (id) => {

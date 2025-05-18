@@ -67,7 +67,7 @@ export const NotebookSchema = z.object({
 export type Notebook = z.infer<typeof NotebookSchema>
 
 // --- Update: Remove 'grafana' and 'python' from ConnectionTypeSchema ---
-export const ConnectionTypeSchema = z.enum(["github", "jira", "filesystem", "git_repo"]) // Added "git_repo"
+export const ConnectionTypeSchema = z.enum(["github", "jira", "filesystem", "code_index"]) // Renamed "git_repo" to "code_index"
 export type ConnectionType = z.infer<typeof ConnectionTypeSchema>
 
 export const ConnectionSchema = z.object({
@@ -132,8 +132,8 @@ export interface FileSystemConnectionConfig {
   [key: string]: any; // Allow other potential fields
 }
 
-// New interface for GitRepo redacted config
-export interface GitRepoConnectionConfig {
+// New interface for Code Index redacted config
+export interface CodeIndexConnectionConfig {
   repo_url?: string; // This is the main config
   collection_name?: string; // This might be added by the backend
   [key: string]: any;
@@ -146,7 +146,7 @@ export interface Connection {
   name: string;
   type: ConnectionType;
   is_default: boolean;
-  config: GithubConnectionConfig | JiraConnectionConfig | FileSystemConnectionConfig | GitRepoConnectionConfig | Record<string, any>; // Use specific types + fallback
+  config: GithubConnectionConfig | JiraConnectionConfig | FileSystemConnectionConfig | CodeIndexConnectionConfig | Record<string, any>; // Use specific types + fallback
 }
 export interface GithubConnectionCreateFormData {
   name: string;
@@ -174,8 +174,8 @@ export interface FileSystemConnectionCreateFormData {
   allowed_paths?: string[]; // Optional example
 }
 
-// New interface for GitRepo form data
-export interface GitRepoConnectionCreateFormData {
+// New interface for Code Index form data
+export interface CodeIndexConnectionCreateFormData {
   name: string;
   repo_url: string;
 }

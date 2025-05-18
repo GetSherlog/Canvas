@@ -3,7 +3,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { ConnectionComponentProps } from './shared.js';
 
-export const GitRepoConnectionForm: React.FC<ConnectionComponentProps> = ({ config, updateConfig, isTesting }) => {
+export const CodeIndexConnectionForm: React.FC<ConnectionComponentProps> = ({ config, updateConfig, isTesting }) => {
   const handleUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     updateConfig({ ...config, repo_url: event.target.value });
   };
