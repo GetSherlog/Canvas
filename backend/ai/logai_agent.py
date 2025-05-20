@@ -25,7 +25,9 @@ from pydantic_ai import Agent, CallToolsNode, UnexpectedModelBehavior
 from pydantic_ai.messages import (
     FunctionToolCallEvent,
     FunctionToolResultEvent,
+    FinalResultEvent,
 )
+from pydantic_graph import GraphRunContext
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.mcp import MCPServerStdio
@@ -143,7 +145,6 @@ class LogAIAgent:
         session_id: str,
     ) -> AsyncGenerator[Any, None]:
         """Stream Sherlog events while letting the LLM orchestrate Log-AI tools."""
-
         notebook_id = self.notebook_id
         logger.info(
             "LogAIAgent.run_query invoked (notebook=%s, session=%s, query=%s)",
@@ -210,7 +211,6 @@ class LogAIAgent:
             f"Current time: {current_time_utc}.\\n"
             f"Current Notebook ID: {self.notebook_id}.\\n"
             f"User request: {user_query}\\n"  # user_query is expected to be context-rich
-            "Analyse the supplied logs or perform the requested log-analysis task."
         )
 
         # --- Run LLM agent -------------------------------------------------
@@ -225,31 +225,34 @@ class LogAIAgent:
                     pending_calls: Dict[str, Dict[str, Any]] = {}
                     agent_iteration_has_error = False
 
-                    try:  # Inner try for the iteration and stream processing
+                    try:
                         async for node in run_ctx:
-                            # Tool orchestration node
-                            if isinstance(node, CallToolsNode):
+                            if Agent.is_call_tools_node(node):
                                 logger.info("LogAIAgent: Processing CallToolsNode, streaming events...")
-                                try:  # Try for node.stream()
+                                try:
                                     async with node.stream(run_ctx.ctx) as stream:
-                                        async for evt in stream:
-                                            if isinstance(evt, FunctionToolCallEvent):
-                                                tool_call_id = evt.part.tool_call_id
-                                                tool_name = evt.part.tool_name or "unknown_tool"
-                                                tool_args_raw = evt.part.args or {}
-                                                try:
-                                                    tool_args = (
-                                                        json.loads(tool_args_raw)
-                                                        if isinstance(tool_args_raw, str)
-                                                        else tool_args_raw
-                                                    )
-                                                except json.JSONDecodeError:
-                                                    logger.warning(f"LogAIAgent: Failed to parse tool_args JSON string: {tool_args_raw}. Defaulting to empty dict.")
+                                        async for event in stream:
+                                            if isinstance(event, FunctionToolCallEvent):
+                                                tool_call_id = event.part.tool_call_id
+                                                tool_name = getattr(event.part, 'tool_name', None)
+                                                tool_args = getattr(event.part, 'args', {})
+                                                if not tool_name:
+                                                    logger.warning(f"LogAIAgent: ToolCallPart missing 'tool_name'. Part: {event.part!r}")
+                                                    tool_name = "UnknownTool"
+                                                
+                                                if isinstance(tool_args, str):
+                                                    try:
+                                                        tool_args = json.loads(tool_args)
+                                                    except json.JSONDecodeError as json_err:
+                                                        logger.error(f"Failed to parse tool_args JSON string: {tool_args}. Error: {json_err}")
+                                                        tool_args = {} 
+                                                elif not isinstance(tool_args, dict):
+                                                    logger.warning(f"tool_args is not a dict or valid JSON string: {type(tool_args)}. Defaulting to empty dict.")
                                                     tool_args = {}
 
                                                 pending_calls[tool_call_id] = {
-                                                    "tool_name": tool_name,
-                                                    "tool_args": tool_args,
+                                                    "tool_name": tool_name, 
+                                                    "tool_args": tool_args
                                                 }
                                                 logger.info(f"LogAIAgent: Tool call requested: {tool_name} (ID: {tool_call_id}) with args: {tool_args}")
                                                 yield ToolCallRequestedEvent(
@@ -264,12 +267,12 @@ class LogAIAgent:
                                                     notebook_id=notebook_id,
                                                     session_id=session_id,
                                                 )
-                                            elif isinstance(evt, FunctionToolResultEvent):
-                                                tool_call_id = evt.tool_call_id
-                                                raw_res = evt.result.content
+                                            elif isinstance(event, FunctionToolResultEvent):
+                                                tool_call_id = event.tool_call_id
+                                                raw_res = event.result.content
                                                 
                                                 popped_tool_metadata = pending_calls.pop(tool_call_id, {})
-                                                tool_name_from_meta = popped_tool_metadata.get('tool_name', 'unknown_tool')
+                                                tool_name_from_meta = popped_tool_metadata.get('tool_name', 'UnknownTool')
                                                 tool_args_from_meta = popped_tool_metadata.get('tool_args', {})
 
                                                 logger.info(f"LogAIAgent: Tool call {tool_call_id} ({tool_name_from_meta}) result content (raw_res): {raw_res!r}")
@@ -307,7 +310,7 @@ class LogAIAgent:
                                         message=None, original_plan_step_id=None,
                                         notebook_id=notebook_id, session_id=session_id,
                                     )
-                                    raise # Re-raise to be caught by the main try-except for agent run
+                                    raise
                                 except Exception as stream_err:
                                     agent_iteration_has_error = True
                                     err_msg = f"Error during Log-AI tool stream processing: {stream_err}"
@@ -322,24 +325,30 @@ class LogAIAgent:
                                         message=None, original_plan_step_id=None,
                                         notebook_id=notebook_id, session_id=session_id,
                                     )
-                                    raise # Re-raise
-
-                        if not agent_iteration_has_error:
-                            logger.info("Log-AI agent iteration finished successfully.")
+                                    raise
+                            elif Agent.is_end_node(node):
+                                output = node.data.output
+                                if output:
+                                    logger.info(f"LogAIAgent: Final result: {output}")
+                                    yield _status(StatusType.AGENT_RUN_COMPLETE, "Log-AI analysis finished.")
+                            elif Agent.is_model_request_node(node):
+                                logger.info(f"LogAIAgent: Model request node: {node}")
+                                async with node.stream(run_ctx.ctx) as request_stream:
+                                    async for event in request_stream:
+                                        if isinstance(event, FinalResultEvent):
+                                            logger.info(
+                                                f'[Result] The model produced a final output (tool_name={event.tool_name})'
+                                            )
+                        
                     
-                    except Exception as iteration_exc: # Catches errors from iter loop or re-raised stream errors
-                        if not agent_iteration_has_error: # If not already logged and yielded from inner stream error
-                            # This implies an error in the iteration logic itself, not within a specific tool stream
-                            err_msg = f"Error during Log-AI agent iteration: {iteration_exc}"
-                            logger.error(err_msg, exc_info=True)
-                            # Decide if a generic ToolErrorEvent or if it should just propagate
-                            # For now, let it propagate to the outer handlers
-                        raise # Ensure it propagates to the main try-except for agent run
+                    except Exception as iteration_exc:
+                        err_msg = f"Error during Log-AI agent iteration: {iteration_exc}"
+                        logger.error(err_msg, exc_info=True)
+                        raise
 
                 logger.info("Log-AI MCP servers stopping.")
             
-            # If we successfully completed run_mcp_servers and iter without re-raised exceptions stopping us:
-            if not agent_iteration_has_error: # Check if error was handled and didn't propagate to stop execution flow
+            if not agent_iteration_has_error:
                  yield _status(StatusType.AGENT_RUN_COMPLETE, "Log-AI analysis finished.")
 
         except UnexpectedModelBehavior as umb:
@@ -355,10 +364,9 @@ class LogAIAgent:
                 message=None, original_plan_step_id=None,
                 notebook_id=notebook_id, session_id=session_id,
             )
-        except McpError as mcp_main_err: # Caught re-raised McpError from iteration/stream
-            # The specific ToolErrorEvent was already yielded. This becomes a fatal error for the agent run.
+        except McpError as mcp_main_err:
             err_msg = f"Fatal Log-AI agent error due to MCP issue: {mcp_main_err}"
-            logger.error(err_msg, exc_info=True) # Log again, now as fatal for the run
+            logger.error(err_msg, exc_info=True)
             yield FatalErrorEvent(
                 type=EventType.FATAL_ERROR,
                 status=StatusType.FATAL_MCP_ERROR, 
@@ -366,7 +374,7 @@ class LogAIAgent:
                 error=err_msg,
                 notebook_id=notebook_id, session_id=session_id,
             )
-        except Exception as exc: # Catches other exceptions from setup, run_mcp_servers, or re-raised from iter
+        except Exception as exc:
             err_msg = f"Fatal Log-AI agent error: {exc}"
             logger.error(err_msg, exc_info=True)
             yield FatalErrorEvent(
@@ -377,4 +385,3 @@ class LogAIAgent:
                 notebook_id=notebook_id,
                 session_id=session_id,
             )
-        # The 'else' for AGENT_RUN_COMPLETE is handled by successful completion of the main 'try' block.

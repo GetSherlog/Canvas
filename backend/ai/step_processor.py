@@ -3,49 +3,38 @@ Step processor for executing and processing individual investigation steps.
 """
 
 import logging
-import os
-import traceback # Added
-from typing import Any, Dict, List, Optional, Tuple, Union, Type, AsyncGenerator, cast
-from uuid import UUID, uuid4
+import traceback
+from typing import Any, Dict, List, Optional, Tuple, Union, Type, AsyncGenerator
+from uuid import UUID
 
-# Model Imports
-from backend.ai.models import StepType, InvestigationStepModel, PythonAgentInput # Added PythonAgentInput
+from backend.ai.models import StepType, InvestigationStepModel, PythonAgentInput
 from backend.ai.step_result import StepResult
 from backend.ai.step_agents import StepAgent, MarkdownStepAgent, GitHubStepAgent, FileSystemStepAgent, PythonStepAgent, ReportStepAgent
-from backend.ai.media_agent import MediaTimelineAgent # Import MediaTimelineAgent
-from backend.ai.code_index_query_agent import CodeIndexQueryAgent # Import CodeIndexQueryAgent
+from backend.ai.code_index_query_agent import CodeIndexQueryAgent
 from backend.ai.cell_creator import CellCreator
 from pydantic_ai.models.openai import OpenAIModel
-from backend.core.cell import CellType, CellStatus # Added CellStatus
-from backend.core.query_result import QueryResult, InvestigationReport # Added InvestigationReport
-from backend.services.notebook_manager import NotebookManager # Added import
-from sqlalchemy.ext.asyncio import AsyncSession # Added import
+from backend.core.cell import CellType
+from backend.core.query_result import QueryResult
+from backend.services.notebook_manager import NotebookManager
+from sqlalchemy.ext.asyncio import AsyncSession
 
-# Tool/Service Imports
 from backend.ai.chat_tools import NotebookCellTools
 from backend.services.connection_manager import ConnectionManager
-from backend.services.connection_handlers.registry import get_handler # Added
-from backend.services.connection_handlers.filesystem_handler import FileSystemConnectionHandler # Added
-from mcp.shared.exceptions import McpError # Added
 
-# Event Imports
 from backend.ai.events import (
-    AgentType, BaseEvent, StatusType, StatusUpdateEvent,
+    AgentType, BaseEvent, StatusUpdateEvent,
     ToolSuccessEvent, ToolErrorEvent,
     GitHubToolCellCreatedEvent, GitHubToolErrorEvent, 
     FileSystemToolCellCreatedEvent, FileSystemToolErrorEvent, 
     PythonToolCellCreatedEvent, PythonToolErrorEvent,
-    CodeIndexQueryToolCellCreatedEvent, CodeIndexQueryToolErrorEvent, # Added events for code index query
+    CodeIndexQueryToolCellCreatedEvent, CodeIndexQueryToolErrorEvent,
     StepCompletedEvent, StepErrorEvent, StepExecutionCompleteEvent,
-    SummaryCellCreatedEvent, SummaryCellErrorEvent, FatalErrorEvent, # Added FatalErrorEvent
-    MediaTimelineCellCreatedEvent, # Local import to avoid circular
+    SummaryCellCreatedEvent, SummaryCellErrorEvent,
+    MediaTimelineCellCreatedEvent,
     LogAIToolCellCreatedEvent, LogAIToolErrorEvent,
 )
 
-# Model imports
-from backend.ai.models import SafeOpenAIModel  # For using Claude model
-from pydantic_ai.providers.openai import OpenAIProvider  # Provider for Claude model
-from backend.config import get_settings  # Access OpenRouter API key
+import json
 
 ai_logger = logging.getLogger("ai")
 
@@ -61,33 +50,22 @@ class StepProcessor:
         notebook_id: str, 
         model: OpenAIModel,
         connection_manager: ConnectionManager,
-        notebook_manager: Optional[NotebookManager] = None, # Added notebook_manager
-        mcp_servers: Optional[List[Any]] = None # Added mcp_servers
+        notebook_manager: Optional[NotebookManager] = None,
+        mcp_servers: Optional[List[Any]] = None
     ):
         self.notebook_id = notebook_id
         self.model = model
         self.connection_manager = connection_manager
-        self.notebook_manager = notebook_manager # Store notebook_manager
-        self.mcp_servers = mcp_servers or [] # Store mcp_servers
+        self.notebook_manager = notebook_manager
+        self.mcp_servers = mcp_servers or []
         self.cell_creator = CellCreator(notebook_id, connection_manager)
         
-        # Initialize step agent registry
         self._step_agents: Dict[StepType, StepAgent] = {}
     
     def _get_agent_for_step_type(self, step_type: StepType) -> StepAgent:
         """Get or create the appropriate agent for a step type"""
         if step_type not in self._step_agents:
             if step_type == StepType.MARKDOWN:
-                # Use Claude Sonnet model for markdown generation instead of GPT-4
-                settings = get_settings()
-                claude_model = SafeOpenAIModel(
-                    "anthropic/claude-3.7-sonnet:thinking",
-                    provider=OpenAIProvider(
-                        base_url="https://openrouter.ai/api/v1",
-                        api_key=settings.openrouter_api_key,
-                    ),
-                )
-
                 self._step_agents[step_type] = MarkdownStepAgent(
                     notebook_id=self.notebook_id,
                     model=self.model,
@@ -99,16 +77,13 @@ class StepProcessor:
             elif step_type == StepType.FILESYSTEM:
                 self._step_agents[step_type] = FileSystemStepAgent(self.notebook_id)
             elif step_type == StepType.PYTHON:
-                # Pass notebook_manager to PythonStepAgent
                 self._step_agents[step_type] = PythonStepAgent(self.notebook_id, notebook_manager=self.notebook_manager)
             elif step_type == StepType.INVESTIGATION_REPORT:
-                self._step_agents[step_type] = ReportStepAgent(self.notebook_id, mcp_servers=self.mcp_servers) # Pass mcp_servers
-            elif step_type == StepType.MEDIA_TIMELINE: # Add case for MediaTimelineAgent
+                self._step_agents[step_type] = ReportStepAgent(self.notebook_id, mcp_servers=self.mcp_servers)
+            elif step_type == StepType.MEDIA_TIMELINE:
                 from backend.ai.step_agents import MediaTimelineStepAgent
-                # MediaTimelineStepAgent itself initializes MediaTimelineAgent which uses CorrelatorAgent.
-                # CorrelatorAgent needs mcp_servers. MediaTimelineAgent constructor needs to accept and pass them.
                 self._step_agents[step_type] = MediaTimelineStepAgent(notebook_id=self.notebook_id, connection_manager=self.connection_manager, notebook_manager=self.notebook_manager, mcp_servers=self.mcp_servers)
-            elif step_type == StepType.CODE_INDEX_QUERY: # Add case for CodeIndexQueryAgent
+            elif step_type == StepType.CODE_INDEX_QUERY:
                 self._step_agents[step_type] = CodeIndexQueryAgent(
                     notebook_id=self.notebook_id,
                     connection_manager=self.connection_manager,
@@ -127,11 +102,11 @@ class StepProcessor:
         step: InvestigationStepModel,
         executed_steps: Dict[str, Any],
         step_results: Dict[str, StepResult], 
-        plan_step_id_to_cell_ids: Dict[str, List[UUID]], # Changed from Any to List[UUID]
+        plan_step_id_to_cell_ids: Dict[str, List[UUID]],
         cell_tools: NotebookCellTools,
         session_id: str,
         db: AsyncSession,
-        original_query: str = ""  # New optional param to pass along original user query
+        original_query: str = ""
     ) -> AsyncGenerator[Union[BaseEvent, StepExecutionCompleteEvent], None]:
         """Process a single investigation step and yield event updates"""
         step_type_value = step.step_type.value if step.step_type else "Unknown"
@@ -145,7 +120,7 @@ class StepProcessor:
                 step_id=step.step_id,
                 error=error_msg,
                 agent_type=AgentType.UNKNOWN,
-                step_type=None, # Kept as None since step.step_type is None
+                step_type=None,
                 cell_id=None,
                 cell_params=None,
                 result=None,
@@ -154,22 +129,18 @@ class StepProcessor:
             )
             return
         
-        # Initialize a StepResult to collect all outputs from this step
         step_result = StepResult(step.step_id, step.step_type)
         
-        # Build context for the step from dependencies
         context = self._build_step_context(
             step,
             executed_steps,
             step_results,
-            plan_step_id_to_cell_ids # Pass plan_step_id_to_cell_ids
+            plan_step_id_to_cell_ids
         )
         ai_logger.info(f"Step {step.step_id} context: {context}")
         
-        # Always include the original user query for downstream agents
         if original_query:
             context["original_query"] = original_query
-            # Also prepend a reference to original query at top of prompt for clarity
             context["prompt"] = f"Original user query: {original_query}\n\n" + context["prompt"]
         
         # Get the appropriate agent for this step type
@@ -645,8 +616,8 @@ class StepProcessor:
         self,
         step: InvestigationStepModel,
         executed_steps: Dict[str, Any],
-        step_results: Dict[str, StepResult], # Ensure this is StepResult
-        plan_step_id_to_cell_ids: Dict[str, List[UUID]] # New parameter
+        step_results: Dict[str, StepResult],
+        plan_step_id_to_cell_ids: Dict[str, List[UUID]]
     ) -> Dict[str, Any]:
         """Build context from dependencies for a step"""
         context = {"prompt": step.description}
@@ -732,25 +703,20 @@ class StepProcessor:
             context["prompt"] += f"\n\nContext from Dependencies:\n" + "\n".join(dependency_context)
             ai_logger.info(f"Step {step.step_id} full dependency context: {' '.join(dependency_context)}")
 
-        # Add dependency_cell_ids to the prompt
         dep_cell_ids_for_prompt = {}
         for dep_id in step.dependencies:
             if dep_id in plan_step_id_to_cell_ids and plan_step_id_to_cell_ids[dep_id]:
                 dep_cell_ids_for_prompt[dep_id] = [str(uuid_val) for uuid_val in plan_step_id_to_cell_ids[dep_id]]
 
         if dep_cell_ids_for_prompt:
-            import json # Ensure json is imported if not already available globally in this file
             dep_cell_ids_str = json.dumps(dep_cell_ids_for_prompt, indent=2)
             context["prompt"] += f"\n\nDependency Cell IDs (from orchestrator):\n{dep_cell_ids_str}"
-            # Optionally, store it separately in the context dict if needed structurally,
-            # but for LogAIAgent, adding to the prompt string is the primary goal.
-            # context["dependency_cell_ids_map"] = dep_cell_ids_for_prompt
         
         return context
     
     def _format_findings_for_report(
         self,
-        step: InvestigationStepModel, # This is the report step itself
+        step: InvestigationStepModel,
         executed_steps: Dict[str, Any],
         step_results: Dict[str, StepResult] 
     ) -> str:
@@ -809,11 +775,9 @@ class StepProcessor:
                         data_to_show = output.data if isinstance(output, QueryResult) else output
                         result_str = f"Data: {str(data_to_show)[:REPORT_CONTEXT_SNIPPET_LIMIT]}..."
                     else:
-                        # Summarize multiple outputs, with a cap on the number of outputs and length of each
                         formatted_outputs = []
-                        for i, output_data in enumerate(step_res_obj.outputs[:5]): # Show max 5 outputs
-                            # Truncate each output summary, dividing the limit among them or using a smaller fixed limit per output
-                            output_summary = str(output_data)[:REPORT_CONTEXT_SNIPPET_LIMIT // 2] # e.g. 2000 chars per output
+                        for i, output_data in enumerate(step_res_obj.outputs[:5]):
+                            output_summary = str(output_data)[:REPORT_CONTEXT_SNIPPET_LIMIT // 2]
                             formatted_outputs.append(f"  - Output {i+1}: {output_summary}...")
                         if len(step_res_obj.outputs) > 5:
                             formatted_outputs.append(f"  ... and {len(step_res_obj.outputs) - 5} more outputs.")

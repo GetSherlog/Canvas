@@ -549,6 +549,7 @@ class LogAIStepAgent(StepAgent):
             from backend.ai.events import BaseEvent, FinalStatusEvent
 
             if isinstance(event, (ToolSuccessEvent, ToolErrorEvent, StatusUpdateEvent, FatalErrorEvent)):
+                ai_logger.info(f"Log-AI event: {event}")
                 yield event
             elif isinstance(event, FinalStatusEvent):
                 ai_logger.info(
@@ -559,11 +560,6 @@ class LogAIStepAgent(StepAgent):
                     f"Unexpected BaseEvent type {type(event)} from LogAIAgent: {event!r}"
                 )
             else:
-                # Treat as final output placeholder – StepProcessor doesn't rely on it but
-                # we keep consistent with other agents and wrap in dict.
                 yield {"type": "final_step_result", "result": event}
 
-        # Emit processing complete event (for potential UI hooks)
-        from backend.ai.events import LogAIToolCellCreatedEvent  # not the best fit but placeholder
-        # StepProcessor does not reference a specific *step complete* event for Log-AI yet.
-        # So we don't yield anything special here.
+        from backend.ai.events import LogAIToolCellCreatedEvent

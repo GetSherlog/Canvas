@@ -261,23 +261,9 @@ class FileSystemAgent:
                         # Pass accumulated_message_history to agent.iter
                         async with agent.iter(current_description, message_history=accumulated_message_history) as agent_run:
                             filesystem_agent_logger.info(f"Attempt {attempt_completed}: agent.iter called. History length: {len(accumulated_message_history)}")
-                            # The MCP_CONNECTION_ACTIVE event might be redundant if agent.iter() only proceeds if connection is active.
-                            # For now, let's keep it to explicitly signal this state.
-                            yield StatusUpdateEvent(
-                                type=EventType.STATUS_UPDATE, status=StatusType.MCP_CONNECTION_ACTIVE,
-                                agent_type=AgentType.FILESYSTEM,
-                                attempt=attempt_completed,
-                                message="MCP server connection established and agent.iter active.",
-                                max_attempts=None, reason=None, step_id=None, original_plan_step_id=None,
-                                session_id=session_id,
-                                notebook_id=notebook_id
-                            )
 
                             # --- Core agent interaction logic ---
                         pending_tool_calls: Dict[str, Dict[str, Any]] = {}
-                        # No longer tracking duplicate calls within a single attempt here,
-                        # as passing full message_history to retries should help.
-                        # attempt_tool_calls_history = set()
                         
                         yield StatusUpdateEvent(
                             type=EventType.STATUS_UPDATE,
@@ -355,9 +341,6 @@ class FileSystemAgent:
                                                                 f"Original length: {len(original_tool_content)}, Truncated length: {len(truncated_content_for_llm)}."
                                                             )
                                                         
-                                                        # THIS IS THE KEY CHANGE: Update the event's content field.
-                                                        # We assume pydantic-ai will use this modified event.result.content
-                                                        # when it constructs the ToolMessage to send to the LLM.
                                                         event.result.content = truncated_content_for_llm
                                                         
                                                         app_event_tool_result: Any

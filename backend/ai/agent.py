@@ -1,15 +1,11 @@
 """
 Main AI Agent for investigation planning and execution.
 """
-import os # Added import for os.getenv
 import logging
-import asyncio
 from typing import Any, Dict, List, Optional, Tuple, Union, AsyncGenerator
 from uuid import UUID, uuid4
-from datetime import datetime, timezone
 
 from pydantic_ai import Agent
-# OpenAIModel is no longer directly used, SafeOpenAIModel is used instead
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.mcp import MCPServerHTTP, MCPServerStdio
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse
@@ -22,13 +18,12 @@ from backend.ai.models import (
 from backend.ai.step_result import StepResult
 from backend.ai.step_processor import StepProcessor
 
-from backend.core.cell import CellType, CellStatus
+from backend.core.cell import CellType
 from backend.ai.events import (
-    AgentType, BaseEvent, StatusType,
+    AgentType, BaseEvent,
     PlanCreatedEvent, PlanCellCreatedEvent,
     StepStartedEvent, StepExecutionCompleteEvent,
     StepErrorEvent, InvestigationCompleteEvent,
-    ToolSuccessEvent, ToolErrorEvent, PlanRevisedEvent,
 )
 from backend.ai.chat_tools import NotebookCellTools, CreateCellParams
 from backend.core.notebook import Notebook
@@ -97,7 +92,7 @@ class AIAgent:
             ),
         )
         self.planner_model = SafeOpenAIModel(
-            "anthropic/claude-3.7-sonnet:thinking",
+            "openai/gpt-4.1",
             provider=OpenAIProvider(
                 base_url='https://openrouter.ai/api/v1',
                 api_key=self.settings.openrouter_api_key,
