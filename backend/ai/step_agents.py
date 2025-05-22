@@ -75,10 +75,9 @@ class StepAgent(ABC):
     @abstractmethod
     async def execute(self, 
                       step: InvestigationStepModel, 
-                      agent_input_data: Union[str, PythonAgentInput], # Changed from prompt: str
-                      session_id: str, 
-                      context: Dict[str, Any],
-                      db: Optional[AsyncSession] = None  # Added db parameter, make it optional for non-Python agents
+                      context: str,
+                      session_id: str,
+                      db: Optional[AsyncSession] = None
                       ) -> AsyncGenerator[Union[BaseEvent, Dict[str, Any]], None]:
         """Execute the step and yield events/results."""
         pass
@@ -358,8 +357,7 @@ class MediaTimelineStepAgent(StepAgent):
         step: InvestigationStepModel,
         agent_input_data: Union[str, PythonAgentInput],  # Should be description string
         session_id: str,
-        context: Dict[str, Any],
-        db: Optional[AsyncSession] = None  # Unused but kept for compatibility
+        context: Dict[str, Any]
     ) -> AsyncGenerator[Union[BaseEvent, Dict[str, Any]], None]:
         """Run the MediaTimelineAgent and forward its events"""
         if not isinstance(agent_input_data, str):
@@ -367,139 +365,98 @@ class MediaTimelineStepAgent(StepAgent):
 
         description = agent_input_data
 
-        # Local import to handle potential NameError if module-level import isn't effective.
         from backend.ai.media_agent import MediaTimelineAgent
 
-        # (Re)instantiate the MediaTimelineAgent for this execution so it has correct session_id
         self.timeline_agent = MediaTimelineAgent(
             notebook_id=self.notebook_id,
             session_id=session_id,
             connection_manager=self.connection_manager,
             notebook_manager=self.notebook_manager,
-            mcp_servers=self.mcp_servers # Pass mcp_servers
+            mcp_servers=self.mcp_servers
         )
 
         ai_logger.info(f"Processing MediaTimeline step {step.step_id} using timeline agent...")
 
-        # Forward events from timeline agent
         async for event in self.timeline_agent.run_query(description, context=context):
             if isinstance(event, BaseEvent):
-                # Ensure session and notebook IDs are set if missing
                 if not event.session_id:
                     event.session_id = session_id
                 if not event.notebook_id:
                     event.notebook_id = self.notebook_id
                 yield event
             elif isinstance(event, dict):
-                # Not expected for timeline agent currently. Log and ignore
                 ai_logger.warning(f"Unexpected dict event from MediaTimelineAgent: {event}")
             else:
-                # Assume it's the final MediaTimelinePayload object
                 yield {"type": "final_step_result", "result": event}
 
 
 class ReportStepAgent(StepAgent):
     """Agent for generating investigation reports"""
-    def __init__(self, notebook_id: str, mcp_servers: Optional[List[Any]] = None): # Added mcp_servers
+    def __init__(self, notebook_id: str, mcp_servers: Optional[List[Any]] = None):
         super().__init__(notebook_id)
-        self.mcp_servers = mcp_servers or [] # Store mcp_servers
-        self.report_generator = None  # Lazily initialized
+        self.mcp_servers = mcp_servers or []
+        self.report_generator = None
     
     def get_agent_type(self) -> AgentType:
         return AgentType.INVESTIGATION_REPORT_GENERATOR
     
     async def execute(self, 
-                     step: InvestigationStepModel, 
-                     agent_input_data: Union[str, PythonAgentInput], # Changed from prompt
-                     session_id: str, 
-                     context: Dict[str, Any],
-                     db: Optional[AsyncSession] = None # Added db parameter
-                     ) -> AsyncGenerator[Union[BaseEvent, Dict[str, Any]], None]:
+                     step: InvestigationStepModel,
+                     context: str,
+                     session_id: str,
+                     ) -> AsyncGenerator[Union[StatusUpdateEvent, Dict[str, Any]], None]:
         """Generate an investigation report"""
-        if not isinstance(agent_input_data, str):
-            raise TypeError(f"ReportStepAgent expects a string prompt, got {type(agent_input_data)}")
-        # prompt = agent_input_data # Not directly used by report_generator.run_report_generation
-
-        # Extract required context
-        findings_text = context.get("findings_text", "")
-        original_query = context.get("original_query", "") # This seems to be the main "prompt" for the report
-        
-        # Lazy initialization
         if self.report_generator is None:
             ai_logger.info("Lazily initializing InvestigationReportAgent.")
-            self.report_generator = InvestigationReportAgent(notebook_id=self.notebook_id, mcp_servers=self.mcp_servers) # Pass mcp_servers
+            self.report_generator = InvestigationReportAgent(notebook_id=self.notebook_id, mcp_servers=self.mcp_servers)
         
         ai_logger.info(f"Processing Report step {step.step_id}...")
         final_report_object = None
-        report_error = None
         
         try:
             async for result_part in self.report_generator.run_report_generation(
-                original_query=original_query,
-                findings_summary=findings_text,
+                step=step,
+                context=context,
                 session_id=session_id,
                 notebook_id=self.notebook_id
             ):
                 if isinstance(result_part, InvestigationReport):
                     final_report_object = result_part
-                    report_error = final_report_object.error
-                    yield StatusUpdateEvent(
-                        status=StatusType.SUCCESS,
-                        message="Report object generated",
-                        agent_type=self.get_agent_type(),
-                        attempt=None,
-                        max_attempts=None,
-                        reason=None,
-                        step_id=step.step_id,
-                        original_plan_step_id=None,
-                        session_id=session_id,
-                        notebook_id=self.notebook_id
-                    )
-                    break
+                    yield {"type": "final_step_result", "result": final_report_object}
+                    return
                 elif isinstance(result_part, StatusUpdateEvent):
-                    # Forward status updates
-                    if result_part.session_id is None:
-                        result_part.session_id = session_id
-                    if result_part.notebook_id is None:
-                        result_part.notebook_id = self.notebook_id
                     yield result_part
                 else:
                     ai_logger.warning(f"Unexpected item from report generator: {type(result_part)}")
             
             if final_report_object is None:
-                report_error = "Report agent did not return a final report object."
-                ai_logger.error(report_error)
-                # Create a placeholder error report
-                final_report_object = self._create_error_report(original_query, report_error)
-                
+                yield StatusUpdateEvent(
+                    status=StatusType.ERROR,
+                    message="Report agent did not return a final report object.",
+                    agent_type=self.get_agent_type(),
+                    attempt=None,
+                    max_attempts=None,
+                    reason="Report agent did not return a final report object.",
+                    step_id=step.step_id,
+                    original_plan_step_id=None,
+                    session_id=session_id,
+                    notebook_id=self.notebook_id
+                )
+                return
         except Exception as e:
-            report_error = f"Error during report generation: {e}"
-            ai_logger.error(report_error, exc_info=True)
-            # Create a placeholder error report
-            final_report_object = self._create_error_report(original_query, report_error)
-        
-        yield {"type": "final_step_result", "result": final_report_object, "error": report_error}
-    
-    def _create_error_report(self, query: str, error_message: str) -> InvestigationReport:
-        """Create a placeholder error report when generation fails"""
-        return InvestigationReport(
-            query=query,
-            title="Report Generation Failed",
-            issue_summary=Finding(summary="Generation Error", details=None, code_reference=None, supporting_quotes=None),
-            root_cause=Finding(summary="Generation Error", details=None, code_reference=None, supporting_quotes=None),
-            error=error_message,
-            status=None,
-            status_reason="Generation Error",
-            estimated_severity=None,
-            root_cause_confidence=None,
-            proposed_fix=None,
-            proposed_fix_confidence=None,
-            affected_context=None,
-            key_components=[],
-            related_items=[],
-            suggested_next_steps=[],
-            tags=[]
-        )
+            yield StatusUpdateEvent(
+                    status=StatusType.ERROR,
+                    message=f"Exception occurred during report generation. {e}",
+                    agent_type=self.get_agent_type(),
+                    attempt=None,
+                    max_attempts=None,
+                    reason=f"Exception occurred during report generation. {e}",
+                    step_id=step.step_id,
+                    original_plan_step_id=None,
+                    session_id=session_id,
+                    notebook_id=self.notebook_id
+                )
+            return 
 
 
 class LogAIStepAgent(StepAgent):

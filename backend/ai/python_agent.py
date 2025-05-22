@@ -9,26 +9,21 @@ from typing import  Optional, AsyncGenerator, Dict, Any, Union, List
 from datetime import datetime, timezone
 import json
 import os
-import re # Added for parsing
-import uuid # For unique filenames
-from uuid import UUID # Import UUID
+import re
+import uuid
 
 from pydantic_ai import Agent, UnexpectedModelBehavior, CallToolsNode
 from pydantic_ai.messages import (
     FunctionToolCallEvent,
     FunctionToolResultEvent,
-    ModelMessage, # For message_history
+    ModelMessage,
 )
-# from pydantic_ai.models.openai import OpenAIModel # Replaced with SafeOpenAIModel
-from backend.ai.models import SafeOpenAIModel, FileDataRef, PythonAgentInput # Added for safer timestamp handling and new input models
+from backend.ai.models import SafeOpenAIModel, FileDataRef, PythonAgentInput
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.mcp import MCPServerStdio
-# from mcp.shared.exceptions import McpError # Not directly used by PythonAgent for calling other MCPs now
 from mcp import StdioServerParameters
-from backend.core.cell import CellStatus # Added import
-# Potential import if NotebookManager is injected - for type hinting
-from backend.services.notebook_manager import NotebookManager # For type hinting
-from sqlalchemy.ext.asyncio import AsyncSession # Added import
+from backend.services.notebook_manager import NotebookManager
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import get_settings
 from backend.ai.events import (
@@ -44,15 +39,12 @@ from backend.ai.events import (
 )
 python_agent_logger = logging.getLogger("ai.python_agent")
 
-# Define a base path for storing imported datasets. This could come from settings.
-# IMPORTANT: Ensure this path is writable by the application.
-# For Docker, this path is relative to the container's filesystem.
 IMPORTED_DATA_BASE_PATH = "data/imported_datasets"
 
 
 class PythonAgent:
     """Agent for interacting with Python MCP server using stdio."""
-    def __init__(self, notebook_id: str, notebook_manager: Optional[NotebookManager] = None): # Added notebook_manager
+    def __init__(self, notebook_id: str, notebook_manager: Optional[NotebookManager] = None):
         python_agent_logger.info(f"Initializing PythonAgent (notebook_id will be from input)")
         self.settings = get_settings()
         self.model = SafeOpenAIModel(
@@ -62,15 +54,14 @@ class PythonAgent:
                     api_key=self.settings.openrouter_api_key,
                 ),
         )
-        self.agent = None # Will be initialized in run_query
-        self.notebook_manager: Optional[NotebookManager] = notebook_manager # Assign passed manager
-        python_agent_logger.info(f"PythonAgent class initialized (model configured, agent instance created per run).")
+        self.agent = None
+        self.notebook_manager: Optional[NotebookManager] = notebook_manager
 
     async def _prepare_local_file(
         self, 
         data_ref: FileDataRef, 
         notebook_id: str, 
-        session_id: str # Added session_id for better namespacing
+        session_id: str
     ) -> str:
         """
         Ensures the CSV data is available as a local file and returns its path.

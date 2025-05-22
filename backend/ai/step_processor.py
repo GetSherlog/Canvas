@@ -34,7 +34,8 @@ from backend.ai.events import (
     LogAIToolCellCreatedEvent, LogAIToolErrorEvent,
 )
 
-import json
+import lxml.etree
+import lxml.builder 
 
 ai_logger = logging.getLogger("ai")
 
@@ -134,14 +135,15 @@ class StepProcessor:
         context = self._build_step_context(
             step,
             executed_steps,
-            step_results,
-            plan_step_id_to_cell_ids
+            step_results
         )
-        ai_logger.info(f"Step {step.step_id} context: {context}")
-        
+
+        E = lxml.builder.ElementMaker()
+        ORIGINAL_USER_QUERY = E.original_user_query
+
         if original_query:
-            context["original_query"] = original_query
-            context["prompt"] = f"Original user query: {original_query}\n\n" + context["prompt"]
+            og_query = ORIGINAL_USER_QUERY(original_query)
+            context.append(og_query)
         
         # Get the appropriate agent for this step type
         try:
@@ -162,31 +164,24 @@ class StepProcessor:
             )
             return
         
-        # Track execution results
         final_result_data = None
         github_step_has_tool_errors = False
         filesystem_step_has_tool_errors = False
         python_step_has_tool_errors = False
-        code_index_query_step_has_tool_errors = False # Added for code index query
-        
-        # Special handling for report steps
+        code_index_query_step_has_tool_errors = False
+
+        context_str = lxml.etree.tostring(context).decode('utf-8')
+
         if step.step_type == StepType.INVESTIGATION_REPORT:
-            context["findings_text"] = self._format_findings_for_report(step, executed_steps, step_results)
-            for exec_step in executed_steps.values():
-                if 'original_query' in exec_step:
-                    context["original_query"] = exec_step["original_query"]
-                    break
             
-            report_error = None
             report_result = None
             
-            generator = step_agent.execute(step, context.get("prompt", ""), session_id, context, db=db)
+            generator = step_agent.execute(step, context_str, session_id)
             async for event in generator:
-                if isinstance(event, BaseEvent):
+                if isinstance(event, StatusUpdateEvent):
                     yield event
                 elif isinstance(event, dict) and event.get("type") == "final_step_result":
                     report_result = event.get("result")
-                    report_error = event.get("error")
                 
             if report_result:
                 dependency_cell_ids = [cid for dep_id in step.dependencies for cid in plan_step_id_to_cell_ids.get(dep_id, [])]
@@ -194,25 +189,17 @@ class StepProcessor:
                     cell_tools=cell_tools, step=step, report=report_result,
                     dependency_cell_ids=dependency_cell_ids, session_id=session_id
                 )
-                if cell_error:
-                    yield SummaryCellErrorEvent(
-                        error=cell_error, cell_params=cell_params.model_dump() if cell_params else None,
-                        session_id=session_id, notebook_id=self.notebook_id
-                    )
-                    step_result.add_error(cell_error)
-                else:
+                if not cell_error:
                     yield SummaryCellCreatedEvent(
                         cell_params=cell_params.model_dump() if cell_params else {},
                         cell_id=str(created_cell_id) if created_cell_id else None,
-                        error=report_error, session_id=session_id, notebook_id=self.notebook_id
+                        error=None, session_id=session_id, notebook_id=self.notebook_id
                     )
                 if created_cell_id:
                     plan_step_id_to_cell_ids.setdefault(step.step_id, []).append(created_cell_id)
                     step_result.add_cell_id(created_cell_id)
                 final_result_data = report_result
                 step_result.add_output(report_result)
-                if report_error:
-                    step_result.add_error(report_error)
             else:
                 error_msg = "Report generation failed to produce a report"
                 step_result.add_error(error_msg)
@@ -616,177 +603,90 @@ class StepProcessor:
         self,
         step: InvestigationStepModel,
         executed_steps: Dict[str, Any],
-        step_results: Dict[str, StepResult],
-        plan_step_id_to_cell_ids: Dict[str, List[UUID]]
-    ) -> Dict[str, Any]:
+        step_results: Dict[str, StepResult]
+    ) -> Any:
         """Build context from dependencies for a step"""
-        context = {"prompt": step.description}
-        
-        ai_logger.info(f"Building context for step {step.step_id}. Initial prompt: {context['prompt'][:1000]}...")
+        E = lxml.builder.ElementMaker()
+        CONTEXT = E.context
+        STEP = E.step
+        STEP_PARAMS = E.step_params
+        DEPENDENCY = E.dependency
+        OUTPUT = E.output
+
+        step_context = STEP(step.step_id, step.description)
+
+        step_params = []
         if step.parameters:
-            params_str = "\n".join([f"- {k}: {v}" for k, v in step.parameters.items()])
-            context["prompt"] += f"\n\nParameters for this step:\n{params_str}"
-            ai_logger.info(f"Step {step.step_id} parameters added to prompt: {params_str}")
+            
+            for key, value in step.parameters.items():
+                step_params.append(STEP_PARAMS(key, value))
+
+            step_context.append(step_params)
+
+            ai_logger.info(f"Step {step.step_id} parameters added to prompt")
         
-        dependency_context = []
-        for dep_id in step.dependencies:
-            if dep_id in executed_steps:
-                dep_step_info = executed_steps[dep_id]
-
-                if not isinstance(dep_step_info, dict):
-                    ai_logger.warning(f"Dependency info for {dep_id} is not a dictionary: {type(dep_step_info)}. Skipping context for this dependency.")
-                    dependency_context.append(f"- Dependency '{dep_id}': Information malformed or unavailable.")
-                    continue
-
-                raw_dep_step_model_data = dep_step_info.get('step')
-                dep_overall_error = dep_step_info.get('error')
-                dep_result_obj = step_results.get(dep_id)
-
-                if not raw_dep_step_model_data: # This check handles if 'step' key is missing or its value is None
-                    ai_logger.warning(f"Could not find step model data for dependency ID {dep_id} in executed_steps.")
-                    dependency_context.append(f"- Dependency '{dep_id}': Step model data unavailable.")
-                    continue
-                
-                # Ensure raw_dep_step_model_data is a dict before attempting to create InvestigationStepModel from it
-                if not isinstance(raw_dep_step_model_data, dict):
-                    ai_logger.error(f"Step model data for dependency {dep_id} is not a dictionary: {type(raw_dep_step_model_data)}. Skipping.")
-                    dependency_context.append(f"- Dependency '{dep_id}': Invalid step model data format.")
-                    continue
-
-                try:
-                    dep_step_model = InvestigationStepModel(**raw_dep_step_model_data)
-                except Exception as e:
-                    ai_logger.error(f"Failed to parse InvestigationStepModel for dependency {dep_id} from data {raw_dep_step_model_data}: {e}")
-                    dependency_context.append(f"- Dependency '{dep_id}': Error parsing step model data.")
-                    continue
-                    
-                context_limit = STEP_CONTEXT_SNIPPET_LIMIT # Use updated limit
-                context_line = f"- Dependency '{dep_id}' ({dep_step_model.step_type.value}): {dep_step_model.description[:context_limit]}..."
-                
-                if isinstance(dep_result_obj, StepResult) and dep_result_obj.outputs:
-                    context_line += " (Outputs Available)"
-                    outputs_summary_lines = []
-                    for i, out_data in enumerate(dep_result_obj.outputs): # Limit number of outputs summarized
-                        summary_prefix = f"  - Output {i+1}:"
-                        if isinstance(out_data, dict):
-                            if out_data.get("status") == "success" and "stdout" in out_data and out_data.get("stdout") is not None:
-                                outputs_summary_lines.append(f"{summary_prefix} (stdout): {str(out_data['stdout'])[:context_limit].strip()}...")
-                            elif "path" in out_data and "content" in out_data:
-                                outputs_summary_lines.append(f"{summary_prefix} (file: {out_data['path']}): {str(out_data['content'])[:context_limit].strip()}...")
-                            elif "search_results" in out_data:
-                                search_results_data = out_data.get("search_results")
-                                count = len(search_results_data) if isinstance(search_results_data, list) else 0
-                                first_item_str = str(search_results_data[0])[:context_limit] if search_results_data and count > 0 else ""
-                                outputs_summary_lines.append(f"{summary_prefix} ({count} search results found).{' First: ' + first_item_str + '...' if count > 0 else ''}")
-                            else:
-                                outputs_summary_lines.append(f"{summary_prefix} {str(out_data)[:context_limit].strip()}...")
-                        elif isinstance(out_data, list):
-                             outputs_summary_lines.append(f"{summary_prefix} (list with {len(out_data)} items). First: {str(out_data[0])[:context_limit]}..." if out_data else f"{summary_prefix} (empty list).")
-                        elif isinstance(out_data, QueryResult):
-                             outputs_summary_lines.append(f"{summary_prefix} {str(out_data.data)[:context_limit].strip()}...")
-                        else:
-                            outputs_summary_lines.append(f"{summary_prefix} {str(out_data)[:context_limit].strip()}...")
-                    
-                    if outputs_summary_lines: context_line += "\n" + "\n".join(outputs_summary_lines)
-                    else: context_line += " (Step had outputs, but they could not be summarized for context.)"
-                elif dep_overall_error:
-                    context_line += f" (Failed: {str(dep_overall_error)[:context_limit]}... No usable output data for context.)"
-                elif isinstance(dep_result_obj, StepResult) and dep_result_obj.has_error():
-                     combined_error = dep_result_obj.get_combined_error()
-                     error_snippet = str(combined_error)[:context_limit] if combined_error else "Unknown error"
-                     context_line += f" (Failed: {error_snippet}... No usable output data for context.)"
-                else:
-                    context_line += " (Completed with no specific output data for context.)"
-                dependency_context.append(context_line)
-        
-        if dependency_context:
-            context["prompt"] += f"\n\nContext from Dependencies:\n" + "\n".join(dependency_context)
-            ai_logger.info(f"Step {step.step_id} full dependency context: {' '.join(dependency_context)}")
-
-        dep_cell_ids_for_prompt = {}
-        for dep_id in step.dependencies:
-            if dep_id in plan_step_id_to_cell_ids and plan_step_id_to_cell_ids[dep_id]:
-                dep_cell_ids_for_prompt[dep_id] = [str(uuid_val) for uuid_val in plan_step_id_to_cell_ids[dep_id]]
-
-        if dep_cell_ids_for_prompt:
-            dep_cell_ids_str = json.dumps(dep_cell_ids_for_prompt, indent=2)
-            context["prompt"] += f"\n\nDependency Cell IDs (from orchestrator):\n{dep_cell_ids_str}"
-        
-        return context
-    
-    def _format_findings_for_report(
-        self,
-        step: InvestigationStepModel,
-        executed_steps: Dict[str, Any],
-        step_results: Dict[str, StepResult] 
-    ) -> str:
-        """Format findings from previous steps for the report"""
-        findings_text_lines = []
-        ai_logger.info(f"Formatting findings for report step {step.step_id}. Dependencies: {step.dependencies}")
-
-        if not step.dependencies:
-            return "No dependencies specified for this report step. Unable to gather findings."
-
+        dependency_contexts = []
         for dep_id in step.dependencies:
             if dep_id not in executed_steps:
-                ai_logger.warning(f"Dependency step_id '{dep_id}' for report step '{step.step_id}' not found in executed_steps. Skipping.")
-                findings_text_lines.append(f"Step {dep_id}: Data unavailable (step not found in execution history).")
                 continue
             
-            step_info = executed_steps[dep_id]
-            step_obj_data_any = step_info.get("step")
-            step_res_obj = step_results.get(dep_id)
-            step_error_msg = step_info.get("error")
+            dep_step_info = executed_steps[dep_id]
 
-            desc = "N/A (description unavailable)"
-            type_val = "unknown (type unavailable)"
-            dep_step_model: Optional[InvestigationStepModel] = None
+            if not isinstance(dep_step_info, dict):
+                ai_logger.warning(f"Dependency info for {dep_id} is not a dictionary: {type(dep_step_info)}. Skipping context for this dependency.")
+                continue
 
-            if isinstance(step_obj_data_any, dict):
-                try:
-                    dep_step_model = InvestigationStepModel(**step_obj_data_any)
-                except Exception as e:
-                    ai_logger.error(f"Failed to parse InvestigationStepModel for dep_id '{dep_id}' in _format_findings_for_report from dict: {e}")
-            elif isinstance(step_obj_data_any, InvestigationStepModel):
-                dep_step_model = step_obj_data_any
-            elif step_obj_data_any is None:
-                ai_logger.warning(f"Step data for dep_id '{dep_id}' is None in _format_findings_for_report.")
-            else:
-                ai_logger.warning(f"Unexpected type for step_obj_data for dep_id '{dep_id}': {type(step_obj_data_any)} in _format_findings_for_report.")
+            raw_dep_step_model_data = dep_step_info.get('step')
+            dep_result_obj = step_results.get(dep_id)
 
-            if dep_step_model:
-                desc = dep_step_model.description
-                if isinstance(dep_step_model.step_type, StepType):
-                    type_val = dep_step_model.step_type.value
-                elif dep_step_model.step_type:
-                    type_val = str(dep_step_model.step_type)
-                else:
-                    type_val = "unknown (step_type missing)"
+            if not raw_dep_step_model_data:
+                ai_logger.warning(f"Could not find step model data for dependency ID {dep_id} in executed_steps.")
+                continue
             
-            result_str = ""
-            if step_error_msg:
-                result_str = f"Error: {step_error_msg}"
-            elif isinstance(step_res_obj, StepResult):
-                if step_res_obj.has_error():
-                    result_str = f"Error: {step_res_obj.get_combined_error()}"
-                elif step_res_obj.outputs:
-                    if step_res_obj.step_type == StepType.MARKDOWN and step_res_obj.outputs:
-                        output = step_res_obj.outputs[0]
-                        data_to_show = output.data if isinstance(output, QueryResult) else output
-                        result_str = f"Data: {str(data_to_show)[:REPORT_CONTEXT_SNIPPET_LIMIT]}..."
+            if not isinstance(raw_dep_step_model_data, dict):
+                ai_logger.error(f"Step model data for dependency {dep_id} is not a dictionary: {type(raw_dep_step_model_data)}. Skipping.")
+                continue
+
+            try:
+                dep_step_model = InvestigationStepModel(**raw_dep_step_model_data)
+            except Exception as e:
+                ai_logger.error(f"Failed to parse InvestigationStepModel for dependency {dep_id} from data {raw_dep_step_model_data}: {e}")
+                continue
+                
+            context_limit = STEP_CONTEXT_SNIPPET_LIMIT
+            dependency = DEPENDENCY(dep_id, dep_step_model.step_type.value, dep_step_model.description[:context_limit])
+            
+            if isinstance(dep_result_obj, StepResult) and dep_result_obj.outputs:
+                outputs_summary_lines = []
+                for i, out_data in enumerate(dep_result_obj.outputs):
+                    summary_prefix = f"  - Output {i+1}:"
+                    if isinstance(out_data, dict):
+                        if out_data.get("status") == "success" and "stdout" in out_data and out_data.get("stdout") is not None:
+                            outputs_summary_lines.append(OUTPUT(f"{summary_prefix} (stdout): {str(out_data['stdout'])[:context_limit].strip()}..."))
+                        elif "path" in out_data and "content" in out_data:
+                            outputs_summary_lines.append(OUTPUT(f"{summary_prefix} (file: {out_data['path']}): {str(out_data['content'])[:context_limit].strip()}..."))
+                        elif "search_results" in out_data:
+                            search_results_data = out_data.get("search_results")
+                            count = len(search_results_data) if isinstance(search_results_data, list) else 0
+                            first_item_str = str(search_results_data[0])[:context_limit] if search_results_data and count > 0 else ""
+                            if count > 0:
+                                outputs_summary_lines.append(OUTPUT(f"{summary_prefix} ({count} search results found).{' First: ' + first_item_str}"))
+                        else:
+                            outputs_summary_lines.append(OUTPUT(f"{summary_prefix} {str(out_data)[:context_limit].strip()}..."))
+                    elif isinstance(out_data, list) and out_data:
+                            outputs_summary_lines.append(OUTPUT(f"{summary_prefix} (list with {len(out_data)} items). First: {str(out_data[0])[:context_limit]}..."))
+                    elif isinstance(out_data, QueryResult):
+                            outputs_summary_lines.append(OUTPUT(f"{summary_prefix} {str(out_data.data)[:context_limit].strip()}..."))
                     else:
-                        formatted_outputs = []
-                        for i, output_data in enumerate(step_res_obj.outputs[:5]):
-                            output_summary = str(output_data)[:REPORT_CONTEXT_SNIPPET_LIMIT // 2]
-                            formatted_outputs.append(f"  - Output {i+1}: {output_summary}...")
-                        if len(step_res_obj.outputs) > 5:
-                            formatted_outputs.append(f"  ... and {len(step_res_obj.outputs) - 5} more outputs.")
-                        result_str = "Data (multiple outputs):\\n" + "\\n".join(formatted_outputs) if formatted_outputs else "Step completed, but no specific outputs captured."
-                else:
-                    result_str = "Step completed, but no outputs available in StepResult."
-            else:
-                result_str = "Step completed without explicit data/error capture in StepResult."
+                        outputs_summary_lines.append(OUTPUT(f"{summary_prefix} {str(out_data)[:context_limit].strip()}..."))
+                
+                if outputs_summary_lines:
+                    dependency.append(outputs_summary_lines)
             
-            findings_text_lines.append(f"Step {dep_id} ({type_val}): {desc}\\nResult:\\n{result_str}")
+            dependency_contexts.append(dependency)
         
-        return "\\n---\\n".join(findings_text_lines) if findings_text_lines else "No findings could be gathered from the dependent steps."
+        context = CONTEXT(step_context, dependency_contexts)
+
+        ai_logger.info(f"Step {step.step_id} context: {lxml.etree.tostring(context).decode('utf-8')}")
+        
+        return context

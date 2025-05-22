@@ -36,3 +36,5 @@ qdrant-client[fastembed]>=1.9.0
 redis[hiredis]
 
 yt-dlp==2025.4.30
+
+lxml==5.4.0
