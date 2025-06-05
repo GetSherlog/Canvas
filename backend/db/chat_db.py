@@ -8,17 +8,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, List, Optional, TypeVar, AsyncGenerator
+from typing import Any, Callable, List, Optional, TypeVar, AsyncGenerator, Dict
 
 from pydantic import BaseModel, Field
-from pydantic_ai.messages import (
-    ModelMessage, 
-    ModelMessagesTypeAdapter,
-    ModelRequest, 
-    ModelResponse, 
-    TextPart, 
-    UserPromptPart
-)
 
 # Initialize logger
 chat_logger = logging.getLogger("chat.db")
@@ -165,21 +157,16 @@ class ChatDatabase:
             "updated_at": row[3]
         }
     
-    async def add_message(self, session_id: str, message: ModelMessage) -> None:
+    async def add_message(self, session_id: str, message: Dict) -> None:
         """Add a message to a chat session"""
         # Get current timestamp
         now = datetime.now(timezone.utc).isoformat()
 
-        # Serialize message to JSON using ModelMessagesTypeAdapter
-        try:
-            # The adapter expects a list, so wrap the single message
-            message_json = ModelMessagesTypeAdapter.dump_json([message])
-            content_preview = str(message)[:100] # Preview content
-            chat_logger.info(f"Serializing message of type: {type(message).__name__} using TypeAdapter, content preview: {content_preview}...")
-            chat_logger.info(f"Serialized JSON: {message_json}")
-        except Exception as e:
-            chat_logger.error(f"An unexpected error occurred during message serialization using TypeAdapter: {e}", exc_info=True)
-            raise
+        # Serialize message to JSON
+        message_json = json.dumps(message)
+        content_preview = str(message)[:100] # Preview content
+        chat_logger.info(f"Serializing message of type: {type(message).__name__}, content preview: {content_preview}...")
+        chat_logger.info(f"Serialized JSON: {message_json}")
 
         # Insert message
         chat_logger.info(f"Inserting message for session {session_id}. Type: {type(message).__name__}, Details: {str(message)}")
@@ -196,14 +183,14 @@ class ChatDatabase:
     async def add_messages(self, session_id: str, messages_json: str) -> None:
         """Add a batch of messages to a chat session from JSON"""
         # Parse messages
-        messages = ModelMessagesTypeAdapter.validate_json(messages_json)
+        messages = json.loads(messages_json)
         
         # Get current timestamp
         now = datetime.now(timezone.utc).isoformat()
         
         # Insert each message
         for message in messages:
-            content_type = type(message['content']).__name__ if isinstance(message, dict) and 'content' in message else type(message).__name__
+            content_type = type(message).__name__
             message_json = json.dumps(message)
             chat_logger.info(f"Saving message (type: {content_type}). JSON: {message_json}")
             await self._asyncify(
@@ -216,7 +203,7 @@ class ChatDatabase:
         # Update session timestamp
         await self.update_session_timestamp(session_id)
     
-    async def get_messages(self, session_id: str, limit: int = 100) -> List[ModelMessage]:
+    async def get_messages(self, session_id: str, limit: int = 100) -> List[Dict]:
         """Get messages for a chat session"""
         cursor = await self._asyncify(
             self._execute,
@@ -229,7 +216,7 @@ class ChatDatabase:
         for row in rows:
             message_json = row[0]
             chat_logger.info(f"Message JSON from get_messages: {message_json}")
-            message = ModelMessagesTypeAdapter.validate_json(message_json)[0]
+            message = json.loads(message_json)
             messages.append(message)
         
         return messages

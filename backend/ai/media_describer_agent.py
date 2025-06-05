@@ -13,21 +13,15 @@ The implementation purposefully keeps the HTTP logic minimal and fully async
 parallel.
 """
 
-import asyncio
-import json
 import logging
 from typing import List, Optional
+from enum import Enum
+from dataclasses import dataclass
 
 import httpx
 from pydantic import BaseModel
 
 from backend.config import get_settings
-from backend.ai.media_agent import (
-    MediaTimelineEvent,
-    MediaTimelinePayload,
-    MediaUrl,
-    UrlType,
-)
 
 logger = logging.getLogger("ai.media_describer_agent")
 
@@ -306,4 +300,27 @@ class MediaDescriberAgent:
                     accum[current_url].append(stripped)
 
         # Join accumulated lines into single strings
-        return {u: "\n".join(segs).strip() for u, segs in accum.items() if segs} 
+        return {u: "\n".join(segs).strip() for u, segs in accum.items() if segs}
+
+# --------------------------------------------------------------------
+# Simple data models (replace dependency on legacy media_agent)
+# --------------------------------------------------------------------
+
+class UrlType(str, Enum):
+    VIDEO = "video"
+    IMAGE = "image"
+
+@dataclass
+class MediaUrl:
+    url: str
+    type: UrlType
+
+class MediaTimelineEvent(BaseModel):
+    image_identifier: str
+    description: str
+    code_references: List[str] = []
+
+class MediaTimelinePayload(BaseModel):
+    hypothesis: str
+    timeline_events: List[MediaTimelineEvent]
+    original_query: str 

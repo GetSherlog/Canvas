@@ -51,8 +51,7 @@ ENV GOBIN=/usr/local/bin
 RUN --mount=type=cache,target=/root/.cache/go-build go install github.com/grafana/mcp-grafana/cmd/mcp-grafana@latest
 
 # Install uv first, as it's needed by mcp-server-data-exploration and for main requirements
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && PATH=/root/.local/bin:$PATH /root/.local/bin/uv pip install --system --no-cache uvx
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Install mcp-server-data-exploration
 # Ensure PATH includes /root/.local/bin for this RUN command if uv was just installed to user's bin

@@ -16,12 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import get_settings
 from backend.core.notebook import Notebook, NotebookMetadata, Cell, CellType, CellStatus, DependencyGraph
-from backend.core.cell import Cell, CellType, CellStatus, CellResult # CellStatus is already here
+from backend.core.cell import Cell, CellType, CellStatus, CellResult
 from backend.core.types import ToolCallID
 from backend.db.repositories import NotebookRepository
-from backend.ai.investigation_report_agent import InvestigationReportAgent 
-from backend.ai.events import StatusUpdateEvent, AgentType 
-from backend.core.query_result import QueryResult, InvestigationReport # Added InvestigationReport model
+from backend.ai.investigation_system import InvestigationSystem 
 from backend.core.execution import ExecutionQueue, CellExecutor
 
 
@@ -612,7 +610,7 @@ class NotebookManager:
 
     async def rerun_investigation_cell(self, db: AsyncSession, notebook_id: UUID, cell_id: UUID, session_id: str) -> None:
         """
-        Re-run the generation of an investigation report cell.
+        Re-run the generation of an investigation report cell using Investigation System.
         """
         correlation_id = str(uuid4())
         log_extra = {'correlation_id': correlation_id, 'notebook_id': str(notebook_id), 'cell_id': str(cell_id), 'session_id': session_id}
@@ -635,11 +633,8 @@ class NotebookManager:
             notebook = await self.get_notebook(db, notebook_id)
             logger.info(f"Fetched report cell {cell_id} and notebook {notebook_id}", extra=log_extra)
 
-            # 2. Update cell status to PENDING/RUNNING
-            await self.update_cell_status(db, notebook_id, cell_id, CellStatus.RUNNING, correlation_id=correlation_id) # Changed to RUNNING
-            # Optionally send another status update for RUNNING if PENDING is too brief
-            # await self.update_cell_status(db, notebook_id, cell_id, CellStatus.RUNNING, correlation_id=correlation_id)
-
+            # 2. Update cell status to RUNNING
+            await self.update_cell_status(db, notebook_id, cell_id, CellStatus.RUNNING, correlation_id=correlation_id)
 
             # 3. Extract original_query from the cell's existing result
             original_query = None
@@ -652,14 +647,8 @@ class NotebookManager:
                 return
             logger.info(f"Extracted original_query: '{original_query[:100]}...' for cell {cell_id}", extra=log_extra)
 
-            # 4. Reconstruct findings_summary
+            # 4. Reconstruct findings_summary from dependencies
             findings_summary_lines = []
-            # Get all direct and indirect dependencies (excluding the report cell itself)
-            # The report cell's dependencies are the *direct* step cells.
-            # We need to iterate through all cells that contribute to the report.
-            # For simplicity, let's assume the direct dependencies of the report cell are the relevant step cells.
-            
-            # We need the actual cell objects for the dependencies to get their results.
             dependency_ids = report_cell_model.dependencies # These are UUIDs
             
             logger.info(f"Report cell {cell_id} has dependencies: {dependency_ids}", extra=log_extra)
@@ -682,12 +671,11 @@ class NotebookManager:
                 if dep_cell.status == CellStatus.ERROR and dep_cell.result and dep_cell.result.error:
                     result_str = f"Error: {dep_cell.result.error}"
                 elif dep_cell.result and dep_cell.result.content is not None:
-                    # Adapt formatting based on cell type, similar to _format_findings_for_report
+                    # Adapt formatting based on cell type
                     if dep_cell.type == CellType.MARKDOWN:
                         result_str = f"Data: {str(dep_cell.result.content)[:500]}..."
                     elif isinstance(dep_cell.result.content, dict) or isinstance(dep_cell.result.content, list):
                         # For tool cells (GitHub, Python, etc.) that store dict/list results
-                        # We might want a more structured summary or just a string representation
                         result_str = f"Data: {json.dumps(dep_cell.result.content)[:500]}..."
                     else:
                         result_str = f"Data: {str(dep_cell.result.content)[:500]}..."
@@ -702,53 +690,85 @@ class NotebookManager:
             
             logger.info(f"Reconstructed findings_summary for cell {cell_id}:\n{findings_summary[:500]}...", extra=log_extra)
 
-            # 5. Initialize InvestigationReportAgent
-            report_agent = InvestigationReportAgent(notebook_id=str(notebook_id))
-            logger.info(f"Initialized InvestigationReportAgent for re-run of cell {cell_id}", extra=log_extra)
+            # 5. Initialize Investigation System for report generation
+            investigation_system = InvestigationSystem(
+                notebook_id=str(notebook_id),
+                notebook_manager=self,  # Pass self for notebook operations
+                connection_manager=None  # Will use default
+            )
+            logger.info(f"Initialized InvestigationSystem for re-run of cell {cell_id}", extra=log_extra)
 
-            # 6. Stream report generation
-            final_report_data = None
+            # 6. Generate report using Investigation System
+            report_query = f"""
+Generate a comprehensive investigation report based on the following:
+
+Original Query: {original_query}
+
+Investigation Findings:
+{findings_summary}
+
+Please create a structured investigation report with:
+1. Executive Summary
+2. Key Findings  
+3. Root Cause Analysis
+4. Recommendations
+5. Next Steps
+
+Format as a professional investigation report.
+"""
+
+            final_report_content = None
             start_time = time.time()
 
-            async for event in report_agent.run_report_generation(
-                original_query=original_query,
-                findings_summary=findings_summary,
-                session_id=session_id, # Pass the session_id
-                notebook_id=str(notebook_id) # Pass notebook_id
+            # Stream report generation using Investigation System
+            async for result in investigation_system.investigate(
+                query=report_query,
+                investigation_type="general",
+                notebook_context=f"Session: {session_id}, Notebook: {notebook_id}"
             ):
-                if isinstance(event, StatusUpdateEvent):
-                    # Add cell_id to the event for frontend to target the correct cell
-                    event_data = event.model_dump()
-                    event_data["cell_id"] = str(cell_id) 
-                    # Ensure agent_type is correctly set for report generation status
-                    event_data["agent_type"] = AgentType.INVESTIGATION_REPORTER.value
+                if result.get("type") == "final_report":
+                    final_report_content = result.get("content", "")
+                    break
+                elif result.get("type") in ["investigation_progress", "status"]:
+                    # Forward progress updates to clients
                     if self.notify_callback:
-                        await self.notify_callback(notebook_id, {"type": "status_update", "data": event_data})
-                elif isinstance(event, InvestigationReport): # This is the final report object
-                    final_report_data = event
-                    logger.info(f"Successfully received new report data for cell {cell_id}", extra=log_extra)
-                    break # Stop after getting the report
+                        await self.notify_callback(notebook_id, {
+                            "type": "status_update", 
+                            "data": {
+                                "message": "Generating investigation report...",
+                                "cell_id": str(cell_id),
+                                "status": "processing"
+                            }
+                        })
             
             execution_time = time.time() - start_time
 
             # 7. Update cell with new report
-            if final_report_data:
-                new_report_dict = final_report_data.model_dump(mode='json')
+            if final_report_content:
+                # Create a simple InvestigationReport-like structure
+                report_data = {
+                    "title": f"Investigation Report - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    "query": original_query,
+                    "content": final_report_content,
+                    "generated_at": datetime.now().isoformat(),
+                    "session_id": session_id
+                }
+                
                 # Update cell content (title) if it changed
-                new_title = final_report_data.title or "Investigation Report"
-                current_display_content = f"# Investigation Report: {new_title}\n\n_Structured report data generated._"
+                new_title = report_data["title"]
+                current_display_content = f"# Investigation Report: {new_title}\n\n_Structured report data generated using Investigation System._"
                 
                 updates_for_cell = {
-                    'status': CellStatus.ERROR.value if final_report_data.error else CellStatus.SUCCESS.value,
-                    'result_content': new_report_dict,
-                    'result_error': final_report_data.error,
+                    'status': CellStatus.SUCCESS.value,
+                    'result_content': report_data,
+                    'result_error': None,
                     'result_execution_time': execution_time,
                     'content': current_display_content # Update the display content as well
                 }
                 await self.update_cell_fields(db, notebook_id, cell_id, updates_for_cell)
-                logger.info(f"Successfully updated cell {cell_id} with re-run report.", extra=log_extra)
+                logger.info(f"Successfully updated cell {cell_id} with re-run report using Investigation System.", extra=log_extra)
             else:
-                error_msg = "Re-run: InvestigationReportAgent did not produce a final report."
+                error_msg = "Re-run: Investigation System did not produce a final report."
                 logger.error(error_msg, extra=log_extra)
                 await self.set_cell_result(db, notebook_id, cell_id, result=report_cell_model.result.content if report_cell_model.result else {}, error=error_msg, execution_time=execution_time)
 
@@ -763,9 +783,7 @@ class NotebookManager:
             except Exception as e_final:
                 logger.critical(f"Failed to even set error status for cell {cell_id} after re-run failure: {e_final}", extra=log_extra)
         finally:
-            # The main try/except blocks (calling update_cell_fields or set_cell_result)
-            # already handle sending WebSocket notifications.
-            # A final notification here is redundant and can cause duplicate messages.
+            # The main try/except blocks already handle sending WebSocket notifications
             pass
 
 

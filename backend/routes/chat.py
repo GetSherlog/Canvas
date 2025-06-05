@@ -1,15 +1,15 @@
 """
-Chat API Endpoints
+Chat API Endpoints - Simplified for Agno
 
 This module implements the chat API endpoints for interacting with the AI agent.
+Completely refactored to use simple Agno streaming instead of complex Pydantic AI events.
 """
 
 import json
 import logging
 import time
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 from uuid import uuid4, UUID
-from uuid import uuid4
 from datetime import datetime, timezone
 import sqlite3
 import shutil
@@ -18,11 +18,6 @@ from pathlib import Path as PyPath
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Form, Path, File, UploadFile
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
-from pydantic_ai.messages import (
-    ModelRequest,
-    ModelResponse,
-    UserPromptPart,
-)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -32,7 +27,7 @@ from backend.ai.chat_agent import (
     to_chat_message,
 )
 from backend.db.chat_db import ChatDatabase
-from backend.db.database import get_db, get_async_db_session
+from backend.db.database import get_db, get_async_db_session, get_db_session
 from backend.db.models import UploadedFile
 from backend.services.notebook_manager import NotebookManager, get_notebook_manager
 from backend.services.connection_manager import ConnectionManager, get_connection_manager
@@ -174,8 +169,10 @@ async def create_session(
                 chat_logger.warning(f"Agent for existing session {session_id} not found in cache. Re-initializing.", extra={'correlation_id': correlation_id})
                 try:
                     notebook_manager, connection_manager = managers
-                    agent_instance = ChatAgentService(notebook_manager, connection_manager, redis_client=redis)
-                    await agent_instance.initialize(notebook_id)
+                    agent_instance = ChatAgentService(notebook_id, notebook_manager)
+                    # Use the proper context manager for database session
+                    async with get_db_session() as init_db:
+                        await agent_instance.initialize(init_db)
                     chat_agents_cache[session_id] = agent_instance
                     chat_logger.info(f"Re-initialized and cached agent for existing session {session_id}", extra={'correlation_id': correlation_id})
                 except Exception as e_agent_init:
@@ -238,8 +235,11 @@ async def create_session(
             chat_agents_cache = request.app.state.chat_agents
             try:
                 chat_logger.info(f"Creating and initializing ChatAgentService for new session {session_id}", extra={'correlation_id': correlation_id})
-                agent_instance = ChatAgentService(notebook_manager, connection_manager, redis_client=redis)
-                await agent_instance.initialize(notebook_id)
+                # Simplified: only pass notebook_id and notebook_manager
+                agent_instance = ChatAgentService(notebook_id, notebook_manager)
+                # Use the proper context manager for database session
+                async with get_db_session() as init_db:
+                    await agent_instance.initialize(init_db)
                 chat_agents_cache[session_id] = agent_instance
                 chat_logger.info(f"Cached ChatAgentService instance for new session {session_id}", extra={'correlation_id': correlation_id})
             except Exception as e_agent_create:
@@ -314,7 +314,11 @@ async def _get_session_messages_duplicate_removed(
         chat_messages = [json.dumps(to_chat_message(msg).model_dump()) for msg in messages]
         return Response(
             content="\n".join(chat_messages),
-            media_type="text/plain"
+            media_type="text/plain; charset=utf-8",
+            headers={
+                "Content-Type": "text/plain; charset=utf-8",
+                "Cache-Control": "no-cache"
+            }
         )
     
     except HTTPException:
@@ -340,13 +344,15 @@ async def _get_session_messages_duplicate_removed(
 async def get_chat_agent_for_session(
     request: Request, # Required parameter first
     session_id: str = Path(...),
+    # Use async DB session for initialization
+    db: AsyncSession = Depends(get_async_db_session),
     # Other dependencies with defaults
     managers: Tuple[NotebookManager, ConnectionManager] = Depends(get_managers),
     chat_db: ChatDatabase = Depends(get_chat_db),
     redis: redis.Redis = Depends(get_redis_client),
     settings: Settings = Depends(get_settings)
 ) -> ChatAgentService:
-    """Dependency to retrieve (or initialize) a cached ChatAgentService instance."""
+    """Dependency to retrieve (or initialize) a cached ChatAgentService instance - simplified for Agno."""
     chat_agents_cache = getattr(request.app.state, 'chat_agents', {})
     agent = chat_agents_cache.get(session_id)
 
@@ -384,12 +390,15 @@ async def get_chat_agent_for_session(
         chat_logger.error(f"Unexpected error during agent recovery check for {session_id}: {e_recov}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to verify session for agent recovery.")
 
-    # If we found the notebook_id, initialize the agent JIT
+    # If we found the notebook_id, initialize the agent JIT - simplified for Agno
     chat_logger.info(f"Re-initializing agent for session {session_id} (notebook: {notebook_id}) due to cache miss.")
     try:
         notebook_manager, connection_manager = managers
-        agent = ChatAgentService(notebook_manager, connection_manager, redis_client=redis)
-        await agent.initialize(notebook_id)
+        # Simplified: only pass notebook_id and notebook_manager
+        agent = ChatAgentService(notebook_id, notebook_manager)
+        # Use the proper context manager for database session
+        async with get_db_session() as init_db:
+            await agent.initialize(init_db)
         chat_agents_cache[session_id] = agent # Store the newly initialized agent
         request.app.state.chat_agents = chat_agents_cache # Ensure cache is updated on app state
         return agent
@@ -457,20 +466,19 @@ async def post_message(
     # --- End Fetch and Summarize Cell History ---
 
     # Construct the user message object using the potentially unmodified prompt
-    user_message = ModelRequest(parts=[UserPromptPart(content=prompt_to_use)])
+    user_message = ChatMessage(
+        role="user",
+        content=prompt_to_use,
+        timestamp=datetime.now(timezone.utc).isoformat()
+    )
     
     # --- Prepare history FOR THE AGENT (including the new user message) ---
     # Ensure history_from_db contains ModelMessage objects (or compatible dicts)
     # Assuming chat_db.get_messages returns serializable dicts that can be validated
     # This part might need adjustment based on actual chat_db return type
     try:
-        # Attempt to parse DB messages into ModelMessage objects if they aren't already
-        # NOTE: This assumes pydantic_ai models are used in DB or can be parsed from DB format.
-        # If DB stores raw dicts, parsing logic might be needed here.
-        # For now, let's assume history_from_db is a list of ModelMessage compatible objects/dicts
-        
         # Add the new user_message to the history we pass to the agent
-        history_for_agent = history_from_db + [user_message]
+        history_for_agent = history_from_db + [user_message.model_dump()]
         chat_logger.info(f"History prepared for agent. Total messages: {len(history_for_agent)}")
         if history_for_agent:
              chat_logger.info(f"Last message for agent: {history_for_agent[-1]}")
@@ -480,10 +488,23 @@ async def post_message(
         raise HTTPException(status_code=500, detail="Failed to prepare chat history.")
     # --- End Prepare History --- 
 
+    # Simple adapter to handle database compatibility during migration
+    def adapt_message_for_db(chat_message: ChatMessage) -> Dict[str, Any]:
+        """Convert ChatMessage to format expected by database during migration"""
+        return {
+            "role": chat_message.role,
+            "content": chat_message.content,
+            "timestamp": chat_message.timestamp,
+            "id": chat_message.id,
+            "agent": chat_message.agent
+        }
+
     # Save the user message (with context) to the database asynchronously *before* calling agent
     # This ensures it's persisted even if the agent call fails midway
     try:
-        await chat_db.add_message(session_id, user_message)
+        # Convert our ChatMessage to a format the database expects
+        # TODO: Update ChatDatabase to accept simple message format during complete Pydantic AI migration
+        await chat_db.add_message(session_id, adapt_message_for_db(user_message))  # type: ignore
         chat_logger.info(f"User message saved to DB for session {session_id}")
     except Exception as e:
         # Log error but proceed? Or raise? If DB save fails, history might be inconsistent.
@@ -504,7 +525,7 @@ async def post_message(
 
     async def stream_response():
         nonlocal start_time # Allow modification for response time logging
-        message_buffer: List[Tuple[str, ModelResponse]] = [] # Buffer for DB saving
+        message_buffer: List[Tuple[str, ChatMessage]] = [] # Buffer for DB saving
 
         try:
             # Pass the UPDATED history INCLUDING the current user message
@@ -516,7 +537,7 @@ async def post_message(
                 # --- Handle Clarification Response --- 
                 if status_type == "clarification":
                     chat_logger.info(f"Handling clarification response for session {session_id}")
-                    # Convert ModelResponse to ChatMessage for streaming
+                    # Convert response to ChatMessage for streaming
                     chat_message = to_chat_message(response_part)
                     # Serialize and encode for streaming
                     try:
@@ -529,7 +550,8 @@ async def post_message(
                         yield error_msg.encode('utf-8')
                     # Save clarification response to DB (it wasn't saved before)
                     try:
-                         await chat_db.add_message(session_id, response_part) 
+                         # TODO: Update ChatDatabase to accept simple message format during complete Pydantic AI migration
+                         await chat_db.add_message(session_id, adapt_message_for_db(chat_message))  # type: ignore
                     except Exception as db_err:
                          chat_logger.error(f"Error saving clarification response for session {session_id}", exc_info=True)
                     # End stream after yielding clarification
@@ -539,7 +561,7 @@ async def post_message(
                 # Buffer non-clarification messages for potential DB saving later if needed
                 # message_buffer.append((status_type, response_part))
                 
-                # Convert ModelResponse to ChatMessage for streaming
+                # Convert response to ChatMessage for streaming
                 chat_message = to_chat_message(response_part)
                 
                 # Ensure chat_message content is JSON serializable before streaming
@@ -602,7 +624,16 @@ async def post_message(
                  chat_logger.error(f"Failed to serialize error message: {serialization_error}", exc_info=True)
 
 
-    return StreamingResponse(stream_response(), media_type="application/x-ndjson")
+    return StreamingResponse(
+        stream_response(), 
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Type": "text/plain; charset=utf-8",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 @router.delete("/sessions/{session_id}", status_code=204)
@@ -845,7 +876,11 @@ async def get_session_messages(
         chat_messages = [json.dumps(to_chat_message(msg).model_dump()) for msg in messages]
         return Response(
             content="\n".join(chat_messages),
-            media_type="text/plain"
+            media_type="text/plain; charset=utf-8",
+            headers={
+                "Content-Type": "text/plain; charset=utf-8",
+                "Cache-Control": "no-cache"
+            }
         )
     
     except HTTPException:

@@ -6,8 +6,12 @@ pydantic>=2.11.4
 pydantic-settings>=2.9.1
 starlette>=0.46.2
 
-# AI
-pydantic-ai>=0.1.11
+# AI - New simplified framework
+agno>=1.5.8
+openai>=1.12.0
+mcp>=1.0.0
+
+# AI - Legacy dependencies for remaining integrations
 httpx>=0.25.1
 
 # Database

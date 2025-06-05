@@ -4,12 +4,12 @@ Chat Agent Tools
 This module defines tools that allow the AI agent to manage notebook cells.
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 from uuid import UUID
+from dataclasses import dataclass
 
 import logging
 from pydantic import BaseModel, Field
-from pydantic_ai.tools import Tool
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -78,6 +78,16 @@ class ExecuteAIQueryParams(BaseModel):
     notebook_id: str = Field(description="The UUID of the notebook")
     query: str = Field(description="The query to execute")
     position: Optional[int] = Field(description="Position to insert the cell (optional)", default=None)
+
+
+@dataclass
+class Tool:
+    name: str
+    function: Callable[..., Any]
+    description: str = ""
+
+    def __call__(self, *args, **kwargs):
+        return self.function(*args, **kwargs)
 
 
 class NotebookCellTools:
