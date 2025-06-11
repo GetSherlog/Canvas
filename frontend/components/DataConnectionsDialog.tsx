@@ -1,33 +1,22 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useConnectionStore } from "../store/connectionStore"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
-import { Card, CardContent } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   AlertCircle,
   CheckCircle,
-  Database,
-  Plus,
-  Trash,
+  Settings,
   Loader2,
-  ArrowLeft,
-  Github,
-  Folder,
-  RefreshCw,
+  Server,
 } from "lucide-react"
-import type { ConnectionType } from "../store/types"
 import { useToast } from "@/hooks/use-toast"
-import GitHubConnectionForm from "./connection-forms/GitHubConnectionForm"
-import JiraConnectionForm from "./connection-forms/JiraConnectionForm"
-import FileSystemConnectionForm from "./connection-forms/FileSystemConnectionForm"
-import { GitRepoConnectionForm } from "./connection-forms/GitRepoConnectionForm"
+import WorkspaceConfigurationForm from "./connection-forms/WorkspaceConfigurationForm"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface DataConnectionsDialogProps {
   isOpen: boolean
@@ -35,88 +24,75 @@ interface DataConnectionsDialogProps {
   initialPage?: "list" | "add"
 }
 
-const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, onClose, initialPage = "list" }) => {
-  const [page, setPage] = useState<"list" | "add">(initialPage)
-  const [newConnection, setNewConnection] = useState<{
+const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, onClose }) => {
+  const [workspaceConfig, setWorkspaceConfig] = useState<{
     name: string
-    type: ConnectionType | ""
-    config: Record<string, any>
+    type: string
+    config: Record<string, string | string[] | boolean>
   }>({
-    name: "",
-    type: "",
-    config: {},
+    name: "My Workspace",
+    type: "logai_workspace",
+    config: {
+      github_token: "",
+      filesystem_paths: [""],
+      working_dir: "/workspace",
+      extra_args: ""
+    },
   })
   const [testResult, setTestResult] = useState<{ valid: boolean; message: string } | null>(null)
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [isCreatingConnection, setIsCreatingConnection] = useState(false)
   const [dialogError, setDialogError] = useState<string | null>(null)
-  const [reindexingStates, setReindexingStates] = useState<Record<string, boolean>>({})
   const { toast } = useToast()
 
   // Get state and actions from the store
   const {
     connections,
     loading,
-    error,
-    availableTypes,
     loadConnections,
     createConnection,
     deleteConnection,
     testConnection,
-    reindexConnection,
   } = useConnectionStore()
 
-  // Effect to load connections (which now also loads types via the store action)
+  // Check if workspace is already configured
+  const existingWorkspace = connections.find(conn => conn.type === "workspace")
+
+  // Effect to load connections when dialog opens
   useEffect(() => {
     if (isOpen) {
-      console.log("DataConnectionsDialog: isOpen is true, calling loadConnections...")
       loadConnections()
     }
   }, [isOpen, loadConnections])
 
-  // Effect to set default type for the form *after* types load from store
+  // Effect to populate form with existing workspace config
   useEffect(() => {
-    if (isOpen && availableTypes.length > 0 && !newConnection.type) {
-        setNewConnection(prev => ({ ...prev, type: availableTypes[0] as ConnectionType }));
+    if (existingWorkspace) {
+      setWorkspaceConfig({
+        name: existingWorkspace.name,
+        type: existingWorkspace.type,
+        config: existingWorkspace.config || {
+          github_token: "",
+          filesystem_paths: [""],
+          working_dir: "/workspace",
+          extra_args: ""
+        }
+      })
     }
-    // Only run when types array changes or dialog opens
-  }, [isOpen, availableTypes, newConnection.type]) 
-
-  // Update page state if initialPage prop changes while dialog is open
-  useEffect(() => {
-    if (isOpen) {
-      setPage(initialPage);
-    }
-  }, [initialPage, isOpen]);
+  }, [existingWorkspace])
 
   // Reset state when dialog closes
   useEffect(() => {
     if (!isOpen) {
-      setPage("list")
-      resetForm()
+      setTestResult(null)
+      setDialogError(null)
+      setIsTestingConnection(false)
+      setIsCreatingConnection(false)
     }
   }, [isOpen])
 
-  const resetForm = () => {
-    setNewConnection({
-      name: "",
-      // Reset using types from store
-      type: availableTypes.length > 0 ? availableTypes[0] as ConnectionType : "",
-      config: {},
-    })
-    setTestResult(null)
-    setDialogError(null)
-    setIsTestingConnection(false)
-    setIsCreatingConnection(false)
-  }
-
-  const handleInputChange = (field: string, value: string) => {
-    setNewConnection((prev) => ({ ...prev, [field]: value }))
-    setDialogError(null)
-  }
-
   const handleConfigChange = (field: string, value: string | boolean | string[]) => {
-    setNewConnection((prev) => ({
+    setWorkspaceConfig((prev) => ({
       ...prev,
       config: {
         ...prev.config,
@@ -130,17 +106,24 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
     setTestResult(null)
     setDialogError(null)
 
-    // Check if a valid type is selected
-    if (!newConnection.type) {
-      setDialogError("Please select a connection type.");
-      return; 
+    // Validate configuration
+    const paths = workspaceConfig.config.filesystem_paths || []
+    const validPaths = paths.filter((p: string) => p.trim())
+    if (validPaths.length === 0) {
+      setDialogError("At least one filesystem path is required")
+      return
     }
 
     setIsTestingConnection(true)
 
     try {
-      // Type is guaranteed to be valid ConnectionType here
-      const result = await testConnection(newConnection as { type: ConnectionType; [key: string]: any })
+      const result = await testConnection({
+        ...workspaceConfig,
+        config: {
+          ...workspaceConfig.config,
+          filesystem_paths: validPaths
+        }
+      })
       setTestResult(result)
     } catch (err) {
       console.error("Failed to test connection:", err)
@@ -155,55 +138,51 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
     }
   }
 
-  const handleCreateConnection = async () => {
-    if (!newConnection.name.trim()) {
-      setDialogError("Connection name is required")
+  const handleSaveConfiguration = async () => {
+    // Validate configuration
+    const paths = workspaceConfig.config.filesystem_paths || []
+    const validPaths = paths.filter((p: string) => p.trim())
+    if (validPaths.length === 0) {
+      setDialogError("At least one filesystem path is required")
       return
-    }
-
-    // Check if a valid type is selected
-    if (!newConnection.type) {
-      setDialogError("Please select a connection type.");
-      return; 
     }
 
     setDialogError(null)
     setIsCreatingConnection(true)
 
     try {
-      // Type is guaranteed to be valid ConnectionType here
-      const result = await createConnection(newConnection as { name: string; type: ConnectionType; [key: string]: any })
+      const configToSave = {
+        ...workspaceConfig,
+        config: {
+          ...workspaceConfig.config,
+          filesystem_paths: validPaths
+        }
+      }
+
+      let result
+      if (existingWorkspace) {
+        // Update existing workspace
+        result = await deleteConnection(existingWorkspace.id)
+        if (result) {
+          result = await createConnection(configToSave)
+        }
+      } else {
+        // Create new workspace
+        result = await createConnection(configToSave)
+      }
+
       if (result) {
-        resetForm()
-        setPage("list")
         toast({
-          title: "Connection created",
-          description: `${result.name} has been successfully created.`,
+          title: "Workspace configured",
+          description: "Your workspace has been successfully configured.",
         })
+        onClose()
       }
     } catch (err) {
-      console.error("Failed to create connection:", err)
-      let errorMessage = "An unknown error occurred during creation.";
+      console.error("Failed to save workspace configuration:", err)
+      let errorMessage = "An unknown error occurred during configuration.";
       if (err instanceof Error) {
-          // Check if the error message is JSON (like FastAPI validation error)
-          try {
-            // Attempt to parse the message as JSON
-            const errorDetail = JSON.parse(err.message); 
-            // If successful, format a user-friendly message
-            if (Array.isArray(errorDetail.detail)) {
-              errorMessage = errorDetail.detail.map((d: any) => 
-                `Field '${d.loc.slice(1).join('.')}': ${d.msg}` // Join location path, skip 'body'
-              ).join('; ');
-            } else if (errorDetail.detail) {
-              // Handle cases where detail might be a string
-              errorMessage = String(errorDetail.detail);
-            } else {
-                errorMessage = err.message; // Use original message if parsing fails or format is unexpected
-            }
-          } catch (parseError) {
-            // If parsing fails, it's likely a regular string error message
-            errorMessage = err.message; 
-          }
+        errorMessage = err.message
       }
       setDialogError(errorMessage)
     } finally {
@@ -211,244 +190,57 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
     }
   }
 
-  const handleDeleteConnection = async (id: string, name: string) => {
-    try {
-      const success = await deleteConnection(id)
-      if (success) {
-        toast({
-          title: "Connection deleted",
-          description: `${name} has been successfully deleted.`,
-        })
-      }
-    } catch (err) {
-      console.error("Failed to delete connection:", err)
-      toast({
-        variant: "destructive",
-        title: "Delete failed",
-        description: `Could not delete ${name}. Please try again.`,
-      })
-    }
-  }
-
-  // Function to handle re-indexing
-  const handleReindexConnection = async (id: string, name: string) => {
-    setReindexingStates(prev => ({ ...prev, [id]: true }));
-    toast({ title: `Re-indexing ${name}...`, description: "Fetching latest data and updating index." });
-    try {
-      const result = await reindexConnection(id); // Call the actual store action
-      // Use message from backend response in success toast
-      toast({ title: "Re-index initiated", description: result.message || `${name} is being re-indexed.` });
-    } catch (err) {
-      console.error(`Failed to re-index connection ${name}:`, err);
-      let displayError = "An unknown error occurred during re-indexing.";
-      if (err instanceof Error) {
-          // Assuming the placeholder or actual store action throws an error with a message
-          displayError = err.message;
-      }
-      toast({ variant: "destructive", title: "Re-index failed", description: displayError });
-    } finally {
-      // Keep spinner potentially longer or remove immediately depending on UX preference
-      // For now, remove immediately after the request is initiated/fails
-      setReindexingStates(prev => ({ ...prev, [id]: false }));
-    }
-  };
-
-  const getConnectionTypeIcon = (type: string) => {
-    switch (type) {
-      case "github":
-        return <Github className="h-5 w-5 text-primary" />
-      case "jira":
-        return <Database className="h-5 w-5 text-primary" />
-      case "filesystem":
-        return <Folder className="h-5 w-5 text-primary" />
-      case "git_repo":
-        return <Github className="h-5 w-5 text-primary" />
-      default:
-        return <Database className="h-5 w-5 text-muted-foreground" />
-    }
-  }
-
-  const renderConnectionsList = () => {
-    if (loading) {
-      return (
-        <div className="flex items-center justify-center h-40">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          <span className="ml-2 text-primary">Loading connections...</span>
-        </div>
-      )
-    }
-
-    if (error) {
-      return (
-        <div className="flex items-center justify-center h-40">
-          <div className="p-4 bg-red-50 text-red-800 rounded-md max-w-md">
-            <div className="flex items-center">
-              <AlertCircle className="h-5 w-5 mr-2" />
-              <p>{error}</p>
-            </div>
-            <Button variant="outline" className="mt-4" onClick={() => loadConnections()}>
-              Retry
-            </Button>
-          </div>
-        </div>
-      )
-    }
-
+  if (loading) {
     return (
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-semibold">Data Connections</h2>
-          <div className="flex space-x-2">
-            <Button size="sm" onClick={() => setPage("add")}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Connection
-            </Button>
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="bg-white max-w-3xl">
+          <div className="flex items-center justify-center h-40">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <span className="ml-2 text-primary">Loading workspace configuration...</span>
           </div>
-        </div>
-
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {connections.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-center py-4 text-muted-foreground">
-                      No connections available. Add a connection to get started.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  Array.isArray(connections) && connections.map((connection) => (
-                    <TableRow key={connection.id} className="transition-all duration-200 hover:bg-muted">
-                      <TableCell className="font-medium">{connection.name}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          {getConnectionTypeIcon(connection.type)}
-                          <span className="ml-2">{connection.type}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteConnection(connection.id, connection.name)}
-                            className="transition-all duration-200 hover:bg-red-50"
-                          >
-                            <Trash className="h-4 w-4" />
-                          </Button>
-                          {connection.type === "git_repo" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="ml-2 transition-all duration-200 hover:bg-blue-50"
-                              onClick={() => handleReindexConnection(connection.id, connection.name)}
-                              disabled={reindexingStates[connection.id] || loading}
-                            >
-                              {reindexingStates[connection.id] ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <RefreshCw className="h-4 w-4" /> 
-                              )}
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
+        </DialogContent>
+      </Dialog>
     )
   }
 
-  const renderAddConnectionForm = () => {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center">
-          {initialPage === "list" && (
-            <Button variant="ghost" size="sm" onClick={() => setPage("list")} className="mr-2">
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Back
-            </Button>
-          )}
-          <h2 className="text-xl font-semibold">Add New Connection</h2>
-        </div>
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="bg-white max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Server className="h-5 w-5" />
+            Workspace Configuration
+          </DialogTitle>
+          <DialogDescription>
+            Configure your workspace to enable all Sherlog Canvas features including GitHub integration, filesystem access, Python execution, and log analysis.
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="type">Connection Type</Label>
-            <select
-              id="type"
-              value={newConnection.type}
-              onChange={(e) => {
-                setNewConnection((prev) => ({ 
-                  ...prev, 
-                  type: e.target.value as ConnectionType, 
-                  config: {} 
-                }));
-                setTestResult(null);
-                setDialogError(null);
-              }}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-white"
-              disabled={availableTypes.length === 0}
-            >
-              <option value="" disabled hidden>Select Type...</option>
-              {availableTypes.map(type => (
-                <option key={type} value={type}>
-                  {type.charAt(0).toUpperCase() + type.slice(1)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="name">Connection Name</Label>
+        <div className="space-y-6 mt-6">
+          {existingWorkspace && (
+            <Alert>
+              <Settings className="h-4 w-4" />
+              <AlertDescription>
+                Your workspace is already configured. You can update the settings below.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="name">Configuration Name</Label>
             <Input
               id="name"
-              value={newConnection.name}
-              onChange={(e) => handleInputChange("name", e.target.value)}
-              placeholder="Enter connection name"
+              value={workspaceConfig.name}
+              onChange={(e) => setWorkspaceConfig(prev => ({ ...prev, name: e.target.value }))}
+              placeholder="My Workspace"
               className="w-full"
             />
           </div>
 
-          {newConnection.type === "github" && (
-            <GitHubConnectionForm 
-              config={newConnection.config}
-              onConfigChange={handleConfigChange}
-            />
-          )}
-
-          {newConnection.type === "jira" && (
-             <JiraConnectionForm 
-              config={newConnection.config}
-              onConfigChange={handleConfigChange}
-            />
-          )}
-
-          {newConnection.type === "filesystem" && (
-            <FileSystemConnectionForm
-              config={newConnection.config}
-              onConfigChange={handleConfigChange}
-            />
-          )}
-
-          {newConnection.type === "git_repo" && (
-            <GitRepoConnectionForm
-              config={newConnection.config}
-              updateConfig={(newConf: Record<string, any>) => setNewConnection(prev => ({ ...prev, config: newConf }))}
-              isTesting={isTestingConnection}
-            />
-          )}
+          <WorkspaceConfigurationForm 
+            config={workspaceConfig.config}
+            onConfigChange={handleConfigChange}
+          />
 
           {testResult && (
             <div
@@ -476,30 +268,36 @@ const DataConnectionsDialog: React.FC<DataConnectionsDialogProps> = ({ isOpen, o
             </div>
           )}
 
-          <div className="flex justify-end space-x-2 mt-4">
+          <div className="flex justify-end space-x-2 pt-4">
             <Button
-              onClick={handleCreateConnection}
-              disabled={!newConnection.name || !newConnection.type || isTestingConnection || isCreatingConnection}
+              variant="outline"
+              onClick={handleTestConnection}
+              disabled={isTestingConnection || isCreatingConnection}
+            >
+              {isTestingConnection ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Testing...
+                </>
+              ) : (
+                "Test Connection"
+              )}
+            </Button>
+            <Button
+              onClick={handleSaveConfiguration}
+              disabled={isTestingConnection || isCreatingConnection}
             >
               {isCreatingConnection ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
+                  Saving...
                 </>
               ) : (
-                "Create Connection"
+                existingWorkspace ? "Update Configuration" : "Save Configuration"
               )}
             </Button>
           </div>
         </div>
-      </div>
-    )
-  }
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-white max-w-3xl">
-        {page === "list" ? renderConnectionsList() : renderAddConnectionForm()}
       </DialogContent>
     </Dialog>
   )

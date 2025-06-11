@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+import logging
+from typing import List, Optional
+from enum import Enum
+from dataclasses import dataclass
+
+import httpx
+from pydantic import BaseModel
+
+from backend.config import get_settings
+
 """Media Describer Agent
 
 This agent takes a list of MediaUrl objects (images or videos) together with the
@@ -12,16 +22,6 @@ The implementation purposefully keeps the HTTP logic minimal and fully async
 (using httpx.AsyncClient) so that multiple media files can be processed in
 parallel.
 """
-
-import logging
-from typing import List, Optional
-from enum import Enum
-from dataclasses import dataclass
-
-import httpx
-from pydantic import BaseModel
-
-from backend.config import get_settings
 
 logger = logging.getLogger("ai.media_describer_agent")
 

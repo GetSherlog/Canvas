@@ -5,16 +5,14 @@ Repository module for database operations
 import logging
 from typing import Dict, List, Optional, Any, TypeVar, Union
 from datetime import datetime, timezone
-from uuid import UUID
 
 from sqlalchemy import select, delete, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError, NoResultFound
+from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from backend.db.models import Connection, DefaultConnection, Notebook, Cell, CellDependency
 from backend.core.cell import CellStatus
-from backend.core.types import ToolCallID
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -490,8 +488,7 @@ class NotebookRepository:
             if not cell:
                 return None
 
-            # Extract notebook_id for timestamp update
-            notebook_id = self._ensure_str_id(cell.notebook_id)
+            # Cell's notebook_id is available if needed: self._ensure_str_id(cell.notebook_id)
 
             # Filter kwargs to only include valid attributes of the Cell model
             valid_attrs = {k: v for k, v in kwargs.items() if hasattr(Cell, k)}
@@ -511,7 +508,7 @@ class NotebookRepository:
                  # raise SQLAlchemyError("Update affected 0 rows.") # Commenting out to allow no-op updates
 
             # Update notebook timestamp (this also executes an update)
-            await self._update_notebook_timestamp(notebook_id)
+            await self._update_notebook_timestamp(self._ensure_str_id(cell.notebook_id))
             
             # Commit the changes to the database so they are visible to subsequent queries
             # Expire the cell instance from the session.
@@ -551,15 +548,14 @@ class NotebookRepository:
             if not cell:
                 return False
 
-            # Extract notebook_id for timestamp update
-            notebook_id = self._ensure_str_id(cell.notebook_id)
+            # Cell's notebook_id is available if needed: self._ensure_str_id(cell.notebook_id)
 
             # Delete the cell itself - cascade should delete dependencies
             await self.db.delete(cell) # Session delete handles the object
             logger.info("Cell %s marked for deletion", cell_id, extra={'correlation_id': 'N/A'})
 
             # Update notebook timestamp - this will trigger a flush which performs the delete + cascade
-            await self._update_notebook_timestamp(notebook_id)
+            await self._update_notebook_timestamp(self._ensure_str_id(cell.notebook_id))
             # Assuming commit happens in middleware or higher level function
             logger.info("Notebook timestamp updated after cell deletion request for %s", cell_id, extra={'correlation_id': 'N/A'})
 
@@ -667,8 +663,7 @@ class NotebookRepository:
                 logger.info("Cannot set result: Cell ID %s not found", cell_id, extra={'correlation_id': 'N/A'})
                 return None
             
-            # Extract notebook_id for timestamp update
-            notebook_id = self._ensure_str_id(cell.notebook_id)
+            # Cell's notebook_id is available if needed: self._ensure_str_id(cell.notebook_id)
             
             updates = {
                 'result_content': content,
@@ -699,8 +694,7 @@ class NotebookRepository:
                 logger.info("Cannot mark cell stale: ID %s not found", cell_id, extra={'correlation_id': 'N/A'})
                 return None
             
-            # Extract notebook_id for timestamp update
-            notebook_id = self._ensure_str_id(cell.notebook_id)
+            # Cell's notebook_id is available if needed: self._ensure_str_id(cell.notebook_id)
             
             updated_cell = await self.update_cell(cell_id, status=CellStatus.STALE.value)
             if not updated_cell:

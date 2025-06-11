@@ -2,7 +2,11 @@ import type React from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 interface SQLResultViewProps {
-  result: any
+  result: {
+    rows?: Array<Record<string, unknown>>
+    rowCount?: number
+    executionTime?: number
+  } | null
 }
 
 const SQLResultView: React.FC<SQLResultViewProps> = ({ result }) => {
@@ -29,7 +33,7 @@ const SQLResultView: React.FC<SQLResultViewProps> = ({ result }) => {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {result.rows.map((row: any, rowIndex: number) => (
+          {result.rows.map((row, rowIndex) => (
             <TableRow key={rowIndex}>
               {columns.map((column, colIndex) => (
                 <TableCell key={colIndex}>{formatCellValue(row[column])}</TableCell>
@@ -46,7 +50,7 @@ const SQLResultView: React.FC<SQLResultViewProps> = ({ result }) => {
 }
 
 // Helper function to format cell values
-const formatCellValue = (value: any): React.ReactNode => {
+const formatCellValue = (value: unknown): React.ReactNode => {
   if (value === null || value === undefined) {
     return <span className="text-gray-400 italic">NULL</span>
   }

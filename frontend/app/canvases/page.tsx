@@ -14,8 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Plus, Search, MoreVertical, Trash2, FileText, LineChart, Github, Database, Loader2, AlertCircle } from "lucide-react"
+import { Plus, Search, MoreVertical, Trash2, FileText, LineChart, Github, Database, Loader2, AlertCircle, Settings, CheckCircle, Folder } from "lucide-react"
 import { api, Notebook } from "@/api/client"
 import { useToast } from "@/hooks/use-toast"
 import { useConnectionStore } from "@/store/connectionStore"
@@ -38,39 +37,30 @@ interface Canvas {
 
 // Remove local Connection interface
 
-// --- New DataConnectionsView Component ---
-interface DataConnectionsViewProps {
-  connections: Connection[];
+// --- New WorkspaceConfigurationSection Component ---
+interface WorkspaceConfigurationSectionProps {
+  workspace: Connection | undefined;
   loading: boolean;
   error: string | null;
-  onAddConnection: () => void;
-  onDeleteConnection: (id: string, name: string) => Promise<void>;
+  onConfigure: () => void;
 }
 
-const DataConnectionsView: React.FC<DataConnectionsViewProps> = ({
-  connections,
+const WorkspaceConfigurationSection: React.FC<WorkspaceConfigurationSectionProps> = ({
+  workspace,
   loading,
   error,
-  onAddConnection,
-  onDeleteConnection,
+  onConfigure,
 }) => {
-
-  const getConnectionTypeIcon = (type: string) => {
-    switch (type) {
-      case "grafana":
-        return <LineChart className="h-5 w-5 text-orange-500" />; // Adjusted color
-      case "github":
-        return <Github className="h-5 w-5 text-gray-800" />; // Adjusted color
-      default:
-        return <Database className="h-5 w-5 text-gray-500" />;
-    }
-  };
+  // Extract configuration details from workspace
+  const hasGitHub = workspace?.config?.github_token ? true : false;
+  const filesystemPaths = workspace?.config?.filesystem_paths || [];
+  const hasFilesystem = filesystemPaths.length > 0;
 
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-2 text-primary">Loading connections...</span>
+        <span className="ml-2 text-primary">Loading workspace configuration...</span>
       </div>
     );
   }
@@ -81,12 +71,11 @@ const DataConnectionsView: React.FC<DataConnectionsViewProps> = ({
         <Card className="w-full max-w-md border-destructive bg-destructive/10">
           <CardHeader>
             <CardTitle className="text-destructive flex items-center">
-              <AlertCircle className="h-5 w-5 mr-2" /> Error Loading Connections
+              <AlertCircle className="h-5 w-5 mr-2" /> Error Loading Configuration
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-destructive">{error}</p>
-            {/* Optionally add a retry button if the store supports it easily */}
           </CardContent>
         </Card>
       </div>
@@ -97,48 +86,120 @@ const DataConnectionsView: React.FC<DataConnectionsViewProps> = ({
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-           <h2 className="text-2xl font-semibold tracking-tight">Data Connections</h2>
-           <p className="text-muted-foreground">Manage your data source connections here.</p>
+          <h2 className="text-2xl font-semibold tracking-tight">Workspace Configuration</h2>
+          <p className="text-muted-foreground">
+            Configure your workspace to enable data analysis features.
+          </p>
         </div>
-        <Button onClick={onAddConnection}>
-          <Plus className="mr-2 h-4 w-4" /> Add Connection
+        <Button onClick={onConfigure} variant={workspace ? "outline" : "default"}>
+          <Settings className="mr-2 h-4 w-4" />
+          {workspace ? "Update Configuration" : "Configure Workspace"}
         </Button>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-            {/* Using a simple list for now, could use Table component later */}
-            {connections.length === 0 ? (
-              <div className="p-6 text-center text-muted-foreground">
-                 No connections found. Add your first connection to link data sources.
+      {!workspace ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <Database className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <h3 className="text-lg font-medium mb-2">Workspace Not Configured</h3>
+            <p className="text-muted-foreground mb-4">
+              Set up your workspace to enable GitHub integration, filesystem access, Python execution, and log analysis.
+            </p>
+            <Button onClick={onConfigure}>
+              <Plus className="mr-2 h-4 w-4" />
+              Configure Workspace
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* GitHub Integration */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Github className="h-5 w-5" />
+                GitHub Integration
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                {hasGitHub ? (
+                  <>
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span className="text-sm text-green-600">Configured</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-4 w-4 text-yellow-500" />
+                    <span className="text-sm text-yellow-600">Not configured</span>
+                  </>
+                )}
               </div>
-            ) : (
-              <ul className="divide-y divide-border">
-                {connections.map((connection) => (
-                  <li key={connection.id} className="flex items-center justify-between p-4 hover:bg-muted/50">
-                    <div className="flex items-center space-x-3">
-                       {getConnectionTypeIcon(connection.type)}
-                       <span className="font-medium">{connection.name}</span>
-                       <span className="text-xs text-muted-foreground capitalize">({connection.type})</span>
-                    </div>
-                    <Button
-                       variant="ghost"
-                       size="sm"
-                       className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                       onClick={() => onDeleteConnection(connection.id, connection.name)}
-                    >
-                       <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+
+          {/* Filesystem Access */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Folder className="h-5 w-5" />
+                Filesystem Access
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                {hasFilesystem ? (
+                  <>
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span className="text-sm text-green-600">{filesystemPaths.length} path(s)</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                    <span className="text-sm text-red-600">Required</span>
+                  </>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Python Execution */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Python Execution
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span className="text-sm text-green-600">Available</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Log Analysis */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <LineChart className="h-5 w-5" />
+                Log Analysis
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span className="text-sm text-green-600">Available</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };
-// --- End of DataConnectionsView Component ---
+// --- End of WorkspaceConfigurationSection Component ---
 
 // --- Create Canvas Dialog Content Component ---
 interface CreateCanvasDialogContentProps {
@@ -211,10 +272,10 @@ export default function CanvasesPage() {
     loading: loadingConnections,
     error: connectionsError,
     loadConnections,
-    deleteConnection,
   } = useConnectionStore()
 
-  const hasConnections = connections.length > 0;
+  const hasWorkspace = connections.some(c => c.type === 'workspace');
+  const existingWorkspace = connections.find(c => c.type === 'workspace');
 
   // Fetch canvases
   useEffect(() => {
@@ -266,7 +327,7 @@ export default function CanvasesPage() {
 
   // Create a new canvas
   const handleCreateCanvas = async () => {
-    if (!newCanvasName.trim() || !hasConnections) return
+    if (!newCanvasName.trim() || !hasWorkspace) return
 
     try {
       const newCanvas = await api.notebooks.create({
@@ -320,34 +381,13 @@ export default function CanvasesPage() {
     }
   }
 
-  // Delete a connection using the store action
-  const handleDeleteConnection = async (id: string, name: string) => {
-    try {
-      const success = await deleteConnection(id);
-      if (success) {
-        toast({
-          title: "Connection Deleted",
-          description: `"${name}" connection has been deleted successfully.`,
-        });
-      } else {
-        throw new Error("Deletion action returned false");
-      }
-    } catch (error) {
-      console.error("Failed to delete connection:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: `Failed to delete "${name}" connection. ${error instanceof Error ? error.message : ''}`.trim(),
-      });
-    }
-  };
 
   // Format date for display
   const formatDate = (dateString: string | undefined): string => {
     if (!dateString) return ""
     try {
       return new Date(dateString).toLocaleDateString()
-    } catch (error) {
+    } catch {
       console.warn("Invalid date string for formatting:", dateString);
       return dateString;
     }
@@ -357,8 +397,8 @@ export default function CanvasesPage() {
 
   const CreateCanvasButton = ({ isIconOnly = false }) => (
     <Button
-      onClick={() => hasConnections && setIsCreateDialogOpen(true)}
-      disabled={!hasConnections || isLoading || !!connectionsError}
+      onClick={() => hasWorkspace && setIsCreateDialogOpen(true)}
+      disabled={!hasWorkspace || isLoading || !!connectionsError}
       variant={isIconOnly ? "ghost" : "default"}
       size={isIconOnly ? "icon" : "default"}
     >
@@ -439,11 +479,11 @@ export default function CanvasesPage() {
               <p className="text-gray-500 mb-4">
                 {searchQuery
                    ? "Try a different search term."
-                   : hasConnections && !connectionsError
+                   : hasWorkspace && !connectionsError
                    ? "Create your first canvas to get started."
                    : connectionsError
-                   ? "Could not load connections. Cannot create a canvas."
-                   : "Add a Data Connection before creating your first canvas."
+                   ? "Could not load workspace configuration. Cannot create a canvas."
+                   : "Configure your workspace before creating your first canvas."
                 }
               </p>
               {!searchQuery && !connectionsError && (
@@ -456,12 +496,11 @@ export default function CanvasesPage() {
         <hr className="my-8" />
 
         <section>
-          <DataConnectionsView
-            connections={connections}
+          <WorkspaceConfigurationSection
+            workspace={existingWorkspace}
             loading={loadingConnections}
             error={connectionsError}
-            onAddConnection={() => setIsConnectionsDialogOpen(true)}
-            onDeleteConnection={handleDeleteConnection}
+            onConfigure={() => setIsConnectionsDialogOpen(true)}
           />
         </section>
       </div>

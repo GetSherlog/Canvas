@@ -8,10 +8,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
-from backend.core.cell import Cell, CellStatus, CellType, create_cell
+from backend.core.cell import Cell, CellType, create_cell
 from backend.core.dependency import DependencyGraph
-from backend.core.dependency import ToolCallID
-from backend.core.types import ToolCallRecord
 
 # Initialize logger
 notebook_logger = logging.getLogger("notebook")
@@ -324,7 +322,7 @@ class Notebook(BaseModel):
                         'transitive_deps': [str(d) for d in transitive_deps]
                     }
                 )
-                raise ValueError(f"Adding this dependency would create a cycle")
+                raise ValueError("Adding this dependency would create a cycle")
         except Exception as e:
             notebook_logger.error(
                 "Error checking for circular dependency",

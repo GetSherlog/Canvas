@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 interface JiraConnectionFormProps {
-  config: Record<string, any>
+  config: Record<string, string | boolean>
   onConfigChange: (field: string, value: string | boolean) => void
 }
 

@@ -9,10 +9,14 @@ starlette>=0.46.2
 # AI - New simplified framework
 agno>=1.5.8
 openai>=1.12.0
-mcp>=1.0.0
+mcp>=1.9.3
 
 # AI - Legacy dependencies for remaining integrations
 httpx>=0.25.1
+aiohttp>=3.9.0
+
+# Docker management
+docker>=6.1.0
 
 # Database
 aiomysql>=0.2.0
@@ -32,7 +36,6 @@ orjson>=3.9.10
 python-multipart>=0.0.20
 aiofiles>=24.1.0
 gitingest>=0.1.3
-qdrant-client[fastembed]>=1.9.0
 
 # Added for Redis client
 

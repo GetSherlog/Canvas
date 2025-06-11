@@ -11,19 +11,28 @@ export const CellStatusSchema = z.enum([
 ])
 export type CellStatus = z.infer<typeof CellStatusSchema>
 
-// Update the CellTypeSchema to include only supported types from backend
+// Simplified cell types - only markdown and tool
 export const CellTypeSchema = z.enum([
   "markdown",
+  "tool",
+])
+export type CellType = z.infer<typeof CellTypeSchema>
+
+// Legacy cell types - for reference only, these should be mapped to "tool" type
+export const LegacyCellTypes = [
   "github",
   "summarization",
   "investigation_report",
   "filesystem",
   "python",
   "media_timeline",
-  "code_index_query", // Added new cell type
-  "log_ai", // Log analysis cell
-])
-export type CellType = z.infer<typeof CellTypeSchema>
+  "code_index_query",
+  "log_ai",
+  "sql",
+  "s3",
+  "metric",
+  "ai_query",
+] as const
 
 // New schema for CellResult matching backend
 export const CellResultSchema = z.object({

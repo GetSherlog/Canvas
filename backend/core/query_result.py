@@ -4,7 +4,7 @@ Query Result Module
 This module defines the base QueryResult class and its specialized subclasses for different types of queries.
 """
 
-from typing import Any, Dict, List, Optional, Union, Literal
+from typing import Any, Dict, List, Optional, Literal
 from pydantic import BaseModel, Field
 
 

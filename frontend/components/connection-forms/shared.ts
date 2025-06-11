@@ -1,7 +1,7 @@
 // Defines shared types and interfaces for connection forms
 
 export interface ConnectionConfig {
-  [key: string]: any; // Allows for arbitrary configuration keys
+  [key: string]: string | boolean | string[] | number | undefined; // Common configuration value types
 }
 
 export interface ConnectionComponentProps {

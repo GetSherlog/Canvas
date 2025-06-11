@@ -35,12 +35,12 @@ interface RawNotebook {
     description?: string
     created_at?: string
     updated_at?: string
-    [key: string]: any // Allow other potential metadata fields
+    [key: string]: string | undefined // Allow other potential metadata fields
   }
   created_at?: string
   updated_at?: string
   // Include other top-level fields returned by the API
-  [key: string]: any // Allow other potential top-level fields
+  [key: string]: unknown // Allow other potential top-level fields
 }
 
 // Keep the desired Canvas interface for the component's state

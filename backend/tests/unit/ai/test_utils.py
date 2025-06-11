@@ -1,4 +1,3 @@
-import pytest
 from backend.ai.utils import _truncate_output
 
 DEFAULT_LIMIT = 100 # Use a smaller default limit for easier testing

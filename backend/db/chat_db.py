@@ -10,7 +10,6 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Callable, List, Optional, TypeVar, AsyncGenerator, Dict
 
-from pydantic import BaseModel, Field
 
 # Initialize logger
 chat_logger = logging.getLogger("chat.db")

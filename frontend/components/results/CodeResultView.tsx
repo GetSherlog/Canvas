@@ -1,7 +1,20 @@
 import type React from "react"
+import Image from "next/image"
 
 interface CodeResultViewProps {
-  result: any
+  result: {
+    stdout?: string
+    stderr?: string
+    output?: string
+    error?: string
+    plots?: string[]
+    dataframes?: Array<{
+      columns: string[]
+      data: Array<Array<string | number | boolean | null>>
+    }>
+    executionTime?: number
+    exitCode?: number
+  } | string | null
   language: string
 }
 
@@ -12,7 +25,7 @@ const CodeResultView: React.FC<CodeResultViewProps> = ({ result, language }) => 
   }
 
   // For Python results that include stdout, stderr, and possibly plots
-  if (language === "python") {
+  if (language === "python" && typeof result === 'object' && result !== null) {
     return (
       <div>
         {result.stdout && (
@@ -34,12 +47,15 @@ const CodeResultView: React.FC<CodeResultViewProps> = ({ result, language }) => 
             <h3 className="text-sm font-semibold mb-1">Plots:</h3>
             <div className="flex flex-wrap gap-4">
               {result.plots.map((plot: string, index: number) => (
-                <img
-                  key={index}
-                  src={`data:image/png;base64,${plot}`}
-                  alt={`Plot ${index + 1}`}
-                  className="border rounded max-w-full"
-                />
+                <div key={index} className="relative border rounded overflow-hidden">
+                  <Image
+                    src={`data:image/png;base64,${plot}`}
+                    alt={`Plot ${index + 1}`}
+                    width={600}
+                    height={400}
+                    style={{ width: '100%', height: 'auto' }}
+                  />
+                </div>
               ))}
             </div>
           </div>
@@ -48,7 +64,7 @@ const CodeResultView: React.FC<CodeResultViewProps> = ({ result, language }) => 
         {result.dataframes && result.dataframes.length > 0 && (
           <div className="mb-4">
             <h3 className="text-sm font-semibold mb-1">Data Frames:</h3>
-            {result.dataframes.map((df: any, index: number) => (
+            {result.dataframes.map((df, index) => (
               <div key={index} className="overflow-x-auto mb-4">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -64,7 +80,7 @@ const CodeResultView: React.FC<CodeResultViewProps> = ({ result, language }) => 
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {df.data.map((row: any[], rowIndex: number) => (
+                    {df.data.map((row, rowIndex) => (
                       <tr key={rowIndex}>
                         {row.map((cell, cellIndex) => (
                           <td key={cellIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -86,7 +102,7 @@ const CodeResultView: React.FC<CodeResultViewProps> = ({ result, language }) => 
   }
 
   // For JavaScript results
-  if (language === "javascript") {
+  if (language === "javascript" && typeof result === 'object' && result !== null) {
     return (
       <div>
         {result.output && (
@@ -109,7 +125,7 @@ const CodeResultView: React.FC<CodeResultViewProps> = ({ result, language }) => 
   }
 
   // For Bash results
-  if (language === "bash") {
+  if (language === "bash" && typeof result === 'object' && result !== null) {
     return (
       <div>
         {result.stdout && (

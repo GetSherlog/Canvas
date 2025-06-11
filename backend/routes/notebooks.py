@@ -12,15 +12,13 @@ import json # Added for parsing incoming WebSocket messages
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request
 from pydantic import BaseModel, ValidationError # Added for Pydantic validation
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
-from backend.core.cell import CellType, CellStatus
+from backend.core.cell import CellType, CellStatus, CellResult
 from backend.core.types import ToolCallID
 from backend.services.notebook_manager import NotebookManager, get_notebook_manager
-from backend.db.database import get_db, get_async_db_session
+from backend.db.database import get_async_db_session
 # Import specific message types and payloads
 from backend.websockets import WebSocketManager, RERUN_INVESTIGATION_CELL, RerunInvestigationCellPayload
-from backend.services.connection_manager import ConnectionManager, get_connection_manager
 from backend.db.repositories import NotebookRepository
 
 # Initialize logger
@@ -64,6 +62,8 @@ class CellCreate(BaseModel):
     metadata: Optional[Dict] = None
     settings: Optional[Dict] = None
     connection_id: Optional[str] = None
+    tool_name: Optional[str] = None
+    tool_arguments: Optional[Dict[str, Any]] = None
 
 
 class CellUpdate(BaseModel):
@@ -84,6 +84,16 @@ class CellExecutionRequest(BaseModel):
     """Request body for cell execution, allowing content/args update"""
     content: Optional[str] = None
     tool_arguments: Optional[Dict[str, Any]] = None
+
+
+class ToolCellCreate(BaseModel):
+    """Parameters for creating a cell from a tool call"""
+    tool_name: str
+    tool_args: Dict[str, Any] = {}
+    result: Optional[Any] = None
+    error: Optional[str] = None
+    agent_type: str = "unknown"
+    metadata: Optional[Dict] = None
 
 
 @router.get("/")
@@ -240,7 +250,6 @@ async def create_cell(
     cell_data: CellCreate,
     tool_call_id: Optional[ToolCallID] = None,
     notebook_manager: NotebookManager = Depends(get_notebook_manager),
-    connection_manager: ConnectionManager = Depends(get_connection_manager),
     db: AsyncSession = Depends(get_async_db_session)
 ) -> Dict:
     """
@@ -260,22 +269,6 @@ async def create_cell(
         tool_call_id = uuid4()
         route_logger.debug(f"Generated new tool_call_id {tool_call_id} for cell creation request.")
     
-    connection_id_to_use: Optional[str] = cell_data.connection_id
-    
-    if cell_data.cell_type == CellType.GITHUB:
-        if connection_id_to_use is None:
-            route_logger.info(f"GitHub cell type requires connection_id, fetching default.")
-            try:
-                default_connection = await connection_manager.get_default_connection('github')
-                if default_connection:
-                    connection_id_to_use = default_connection.id
-                    route_logger.info(f"Using default GitHub connection: {connection_id_to_use}")
-                else:
-                    route_logger.warning("No default GitHub connection found. Cell will be created without one.")
-            except Exception as e:
-                route_logger.error(f"Error fetching default GitHub connection: {e}", exc_info=True)
-                pass 
-    
     try:
         cell = await notebook_manager.create_cell(
             db=db,
@@ -284,7 +277,7 @@ async def create_cell(
             content=cell_data.content,
             tool_call_id=tool_call_id,
             position=cell_data.position,
-            connection_id=connection_id_to_use,
+            connection_id=cell_data.connection_id,  # Pass through if provided, but not required
             metadata=cell_data.metadata,
             settings=cell_data.settings
         )
@@ -556,6 +549,98 @@ async def add_dependency(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/{notebook_id}/cells/from-tool", response_model=None)
+async def create_cell_from_tool(
+    notebook_id: UUID,
+    tool_data: ToolCellCreate,
+    request: Request,
+    notebook_manager: NotebookManager = Depends(get_notebook_manager),
+    db: AsyncSession = Depends(get_async_db_session)
+) -> Dict:
+    """
+    Create a cell from a tool call result
+    
+    This endpoint simplifies cell creation by automatically determining
+    the cell type based on the tool name and handling all the metadata.
+    
+    Args:
+        notebook_id: The ID of the notebook
+        tool_data: Tool call information and result
+        
+    Returns:
+        The created cell
+    """
+    route_logger.info(f"Creating cell from tool {tool_data.tool_name} in notebook {notebook_id}")
+    
+    try:
+        # All tool calls use the TOOL cell type
+        cell_type = CellType.TOOL
+        
+        # Create metadata combining tool info and custom metadata
+        metadata = {
+            "tool_name": tool_data.tool_name,
+            "agent_type": tool_data.agent_type,
+            **(tool_data.metadata or {})
+        }
+        
+        # Create the cell
+        cell = await notebook_manager.create_cell(
+            db=db,
+            notebook_id=notebook_id,
+            cell_type=cell_type,
+            content=json.dumps(tool_data.tool_args, indent=2) if tool_data.tool_args else "",
+            tool_call_id=uuid4(),  # Generate a new tool call ID
+            metadata=metadata,
+            tool_name=tool_data.tool_name,
+            tool_arguments=tool_data.tool_args
+        )
+        
+        # If result is provided, update the cell with it
+        if tool_data.result is not None or tool_data.error is not None:
+            cell_result = CellResult(
+                content=tool_data.result,
+                error=tool_data.error,
+                execution_time=0.0
+            )
+            cell.result = cell_result
+            cell.status = CellStatus.ERROR if tool_data.error else CellStatus.SUCCESS
+            
+            # Save the updated cell with result
+            await notebook_manager.set_cell_result(
+                db=db,
+                notebook_id=notebook_id,
+                cell_id=cell.id,
+                result=cell_result
+            )
+        
+        # Notify via WebSocket if available
+        if request and hasattr(request.app.state, 'ws_manager'):
+            ws_manager = request.app.state.ws_manager
+            await ws_manager.send_message(
+                notebook_id=str(notebook_id),
+                message={
+                    "type": "cell_created",
+                    "cell_id": str(cell.id),
+                    "notebook_id": str(notebook_id),
+                    "tool_name": tool_data.tool_name
+                }
+            )
+        
+        route_logger.info(f"Successfully created cell {cell.id} from tool {tool_data.tool_name}")
+        
+        return {
+            "id": str(cell.id),
+            "type": cell.type,
+            "tool_name": tool_data.tool_name,
+            "status": cell.status,
+            "created": True
+        }
+        
+    except Exception as e:
+        route_logger.error(f"Error creating cell from tool: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create cell from tool: {str(e)}")
+
+
 @router.delete("/{notebook_id}/dependencies")
 async def remove_dependency(
     notebook_id: UUID,
@@ -817,3 +902,33 @@ async def notebook_websocket(
     except Exception as e:
          route_logger.error(f"WebSocket error for notebook {notebook_id}: {str(e)}", exc_info=True)
          ws_manager.disconnect(websocket, notebook_uuid)
+
+
+# Server management endpoints
+@router.get("/{notebook_id}/server-status")
+async def get_notebook_server_status(
+    notebook_id: UUID,
+    notebook_manager: NotebookManager = Depends(get_notebook_manager)
+) -> Dict[str, Any]:
+    """Get the status of the LogAI MCP server for a notebook"""
+    return await notebook_manager.get_notebook_server_status(notebook_id)
+
+
+@router.post("/{notebook_id}/server/start")
+async def start_notebook_server(
+    notebook_id: UUID,
+    notebook_manager: NotebookManager = Depends(get_notebook_manager)
+) -> Dict[str, bool]:
+    """Start the LogAI MCP server for a notebook"""
+    success = await notebook_manager._start_notebook_server(notebook_id)
+    return {"success": success}
+
+
+@router.post("/{notebook_id}/server/stop")
+async def stop_notebook_server(
+    notebook_id: UUID,
+    notebook_manager: NotebookManager = Depends(get_notebook_manager)
+) -> Dict[str, bool]:
+    """Stop the LogAI MCP server for a notebook"""
+    success = await notebook_manager.stop_notebook_server(notebook_id)
+    return {"success": success}

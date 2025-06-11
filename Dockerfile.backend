@@ -1,113 +1,46 @@
-# Use an official Go image as the first stage
-FROM golang:1.24-bookworm AS go_builder
-# No further commands needed here, we just need the Go installation
-
-# Start the final stage from the Python image
+# Use Python 3.11 slim image as base
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Set path to include Go copied from the builder stage
-ENV PATH="/usr/local/go/bin:${PATH}"
-
-# Initial update & install prereqs for adding repos
+# Install only essential system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Basic utilities
     ca-certificates \
     curl \
-    gnupg
+    # Git for gitingest and other git operations
+    git \
+    # Build tools for Python packages with C extensions
+    build-essential \
+    # Clean up apt cache to reduce image size
+    && rm -rf /var/lib/apt/lists/*
 
-# Add Docker GPG key and repository
+# Install Docker CLI for container management (needed for LogAI MCP container management)
 RUN install -m 0755 -d /etc/apt/keyrings \
- && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
- && chmod a+r /etc/apt/keyrings/docker.asc \
- && echo \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo \
       "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
       $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" | \
-      tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Update lists again (for new repo) and install main dependencies & Docker CLI, then clean up
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-    build-essential \
-    unzip \
-    nodejs \
-    npm \
-    docker-ce-cli \
-    git \
- && rm -rf /var/lib/apt/lists/*
-
-# Copy Go installation from the builder stage
-COPY --from=go_builder /usr/local/go /usr/local/go
-
-# Verify Go installation (optional, can be removed if confident)
-RUN go version
-
-# Install Deno
-RUN curl -fsSL https://deno.land/x/install/install.sh | sh \
- && mv /root/.deno/bin/deno /usr/local/bin/deno
-
-# Install mcp-grafana
-ENV GOBIN=/usr/local/bin
-RUN --mount=type=cache,target=/root/.cache/go-build go install github.com/grafana/mcp-grafana/cmd/mcp-grafana@latest
-
-# Install uv first, as it's needed by mcp-server-data-exploration and for main requirements
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install mcp-server-data-exploration
-# Ensure PATH includes /root/.local/bin for this RUN command if uv was just installed to user's bin
-RUN PATH=/root/.local/bin:$PATH git clone https://github.com/reading-plus-ai/mcp-server-data-exploration.git /opt/mcp-server-data-exploration \
- && cd /opt/mcp-server-data-exploration \
- && PATH=/root/.local/bin:$PATH /root/.local/bin/uv sync \
- && PATH=/root/.local/bin:$PATH /root/.local/bin/uv pip install --system tabulate matplotlib seaborn pandas scikit-learn
-
-# Install mcp-server-qdrant
-RUN PATH=/root/.local/bin:$PATH /root/.local/bin/uv pip install --system --no-cache mcp-server-qdrant
-
-# Verify that the 'mcp-server-qdrant' sub-command is now available via **uvx**.
-# This runs the command with '--help' to ensure it starts up and exits
-# immediately, failing the build if the sub-command is missing.
-RUN PATH=/root/.local/bin:$PATH uvx mcp-server-qdrant --help >/dev/null 2>&1
-
-# ------------------------------------------------------------
-# Install Sherlog Log Analysis MCP (Python/FastMCP)
-# ------------------------------------------------------------
-# We keep the approach consistent with other Python-based MCP servers:
-# 1. Clone the repository under /opt
-# 2. Use **uv** to install the dependencies listed in the script header
-#    globally into the system environment so that the runtime can launch
-#    the server via `uv run --script` or similar without having to
-#    resolve packages at first boot.
-# NOTE: The script embeds its requirements, but pre-installing them here
-#       speeds up container start-up and prevents runtime network access.
-RUN PATH=/root/.local/bin:$PATH git clone https://github.com/GetSherlog/mcp-sherlog-log-analysis.git /opt/mcp-sherlog-log-analysis \
- && cd /opt/mcp-sherlog-log-analysis \
- && PATH=/root/.local/bin:$PATH /root/.local/bin/uv pip install --system --no-cache \
-        logai \
-        mcp \
-        fastmcp \
-        pandas \
-        numpy \
-        scikit-learn \
-        nltk \
-        Cython \
-        requests \
-        'scipy<2.0' \
-        gensim
+      tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker-ce-cli \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies using the already installed uv
-RUN PATH=/root/.local/bin:$PATH /root/.local/bin/uv pip install --system --no-cache -r requirements.txt
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Create necessary directories in one go
-RUN mkdir -p node_modules data logs uploads \
- && chmod -R 777 node_modules logs data uploads
+# Create necessary directories
+RUN mkdir -p data logs uploads \
+    && chmod -R 777 logs data uploads
 
 # Copy application code
 COPY backend/ ./backend/
 
-# Set default environment variables (can be overridden by .env)
+# Set environment variables
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     LOG_LEVEL=INFO \
@@ -123,5 +56,5 @@ ENV PYTHONPATH=/app \
 # Expose API port
 EXPOSE 8000
 
-# Run the application with custom logging args
+# Run the application
 CMD ["python", "-m", "uvicorn", "backend.server:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "debug", "--no-access-log", "--workers", "6"]

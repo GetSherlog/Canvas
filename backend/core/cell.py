@@ -7,9 +7,8 @@ and query types.
 
 Key components:
 - Cell class: Base class for all cell types with common functionality
-- Specialized cell classes for different sources (SQL, Log, Metric, etc.)
-- CellResult class to represent execution results
-- Utility functions for cell management
+- MarkdownCell: For documentation and text content
+- ToolCell: For all tool-based operations (replaces all specific cell types)
 """
 
 from __future__ import annotations
@@ -18,10 +17,10 @@ from datetime import datetime, timezone
 from enum import Enum
 import logging
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, Optional, Set
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 # Import ToolCallID
 from backend.core.dependency import ToolCallID
@@ -55,32 +54,10 @@ class CellType(str, Enum):
     
     Attributes:
         MARKDOWN: Cell containing markdown text
-        GITHUB: Cell containing a GitHub query or operation result
-        SUMMARIZATION: Cell for summarization results
-        INVESTIGATION_REPORT: Cell containing a structured investigation report
-        FILESYSTEM: Cell representing a filesystem operation
-        PYTHON: Cell containing Python code
-        SQL: Cell containing SQL code
-        S3: Cell representing an S3 operation
-        METRIC: Cell representing a metric query
-        AI_QUERY: Generic for other agent-driven cells
-        MEDIA_TIMELINE: New cell type for media timeline outputs
-        CODE_INDEX_QUERY: For displaying code search results
-        LOG_AI: Log analysis FastMCP server
+        TOOL: Cell representing any tool operation (GitHub, Python, Filesystem, etc.)
     """
     MARKDOWN = "markdown"
-    GITHUB = "github"
-    SUMMARIZATION = "summarization"
-    INVESTIGATION_REPORT = "investigation_report"
-    FILESYSTEM = "filesystem"
-    PYTHON = "python"
-    SQL = "sql"
-    S3 = "s3"
-    METRIC = "metric"
-    AI_QUERY = "ai_query" # Generic for other agent-driven cells
-    MEDIA_TIMELINE = "media_timeline"  # New cell type for media timeline outputs
-    CODE_INDEX_QUERY = "code_index_query" # For displaying code search results
-    LOG_AI = "log_ai"  # Log analysis FastMCP server
+    TOOL = "tool"
 
 
 class CellResult(BaseModel):
@@ -105,7 +82,7 @@ class Cell(BaseModel):
     
     Attributes:
         id: Unique identifier for the cell
-        type: The type of cell (SQL, Python, etc.)
+        type: The type of cell (MARKDOWN or TOOL)
         content: The cell's content (code, query, markdown, etc.)
         result: Optional result from cell execution
         status: Current execution status
@@ -113,11 +90,11 @@ class Cell(BaseModel):
         updated_at: When the cell was last updated
         dependencies: Set of cell IDs this cell depends on
         dependents: Set of cell IDs that depend on this cell
-        tool_call_id: Optional ID for the specific tool call this cell represents (if applicable)
-        tool_name: Name of the tool called (if applicable)
-        tool_arguments: Arguments passed to the tool (if applicable)
-        cell_metadata: Additional cell metadata
-        connection_id: ID of the connection to use (0 or 1)
+        tool_call_id: Optional ID for the specific tool call this cell represents
+        tool_name: Name of the tool called (for TOOL cells)
+        tool_arguments: Arguments passed to the tool (for TOOL cells)
+        metadata: Additional cell metadata
+        connection_id: ID of the connection to use (if applicable)
     """
     id: UUID = Field(default_factory=uuid4)
     type: CellType
@@ -132,34 +109,39 @@ class Cell(BaseModel):
     dependencies: Set[UUID] = Field(default_factory=set)
     dependents: Set[UUID] = Field(default_factory=set)
     
-    # Tool call info (if this cell represents a tool call)
+    # Tool call info (for TOOL cells)
     tool_call_id: ToolCallID = Field(default_factory=uuid4)
     tool_name: Optional[str] = None
     tool_arguments: Optional[Dict[str, Any]] = None
     
     # Metadata
-    cell_metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     
     # Settings for cell execution
     settings: Dict[str, Any] = Field(default_factory=dict)
     
     def __init__(self, **data):
+        # Map legacy cell types to TOOL type
+        if 'type' in data and data['type'] not in ["markdown", "tool"]:
+            # Store the original type in metadata for display purposes
+            if 'metadata' not in data:
+                data['metadata'] = {}
+            data['metadata']['original_type'] = data['type']
+            data['type'] = CellType.TOOL
+            # Also set tool_name if not already set
+            if 'tool_name' not in data or not data['tool_name']:
+                data['tool_name'] = data['metadata']['original_type']
+        
         super().__init__(**data)
         cell_logger.debug(
             "Cell initialized",
             extra={
                 'cell_id': str(self.id),
                 'cell_type': str(self.type),
+                'tool_name': self.tool_name,
                 'connection_id': self.connection_id
             }
         )
-    
-    @field_validator('connection_id')
-    def validate_connection_id(cls, v):
-        # Since connection_id is now a UUID string, this validator is no longer applicable
-        # We might add validation later to ensure it's a valid UUID format if needed.
-        # For now, just return the value.
-        return v
     
     def mark_stale(self) -> None:
         """Mark this cell as stale (needs re-execution)"""
@@ -371,9 +353,6 @@ class MarkdownCell(Cell):
     A cell containing markdown content
     
     This cell type is used for documentation and explanations.
-    
-    Attributes:
-        type: Always set to MARKDOWN
     """
     type: CellType = CellType.MARKDOWN
     
@@ -395,50 +374,44 @@ class MarkdownCell(Cell):
         }
 
 
-class GitHubCell(Cell):
+class ToolCell(Cell):
     """
-    A cell containing a GitHub query/action intent.
-    Tool details are now stored in the base Cell fields.
+    A cell representing any tool operation (GitHub, Python, Filesystem, etc.)
+    
+    This unified cell type replaces all specific tool cell types.
+    The tool_name field indicates which tool is being used.
     """
-    type: CellType = CellType.GITHUB
-    source: str = "github"
+    type: CellType = CellType.TOOL
     
     def __init__(self, **data):
+        # Ensure tool_name is set for tool cells
+        if 'tool_name' not in data or not data['tool_name']:
+            # Try to infer from metadata if available
+            if 'metadata' in data and 'original_type' in data['metadata']:
+                data['tool_name'] = data['metadata']['original_type']
+        
         super().__init__(**data)
         cell_logger.debug(
-            "Github cell initialized",
+            "Tool cell initialized",
             extra={
                 'cell_id': str(self.id),
-                'source': self.source
+                'tool_name': self.tool_name,
+                'has_arguments': bool(self.tool_arguments)
             }
         )
 
 
-class SummarizationCell(Cell):
-    """
-    A cell containing text to be summarized or the result of a summarization.
-    """
-    type: CellType = CellType.SUMMARIZATION
-    source: str = "summarization"
-    # Potentially add fields later if needed, e.g., original_text_ref
-
-    def __init__(self, **data):
-        super().__init__(**data)
-        cell_logger.debug(
-            "Summarization cell initialized",
-            extra={
-                'cell_id': str(self.id),
-                'source': self.source
-            }
-        )
+# For backward compatibility, keep these as aliases
+GitHubCell = ToolCell
+SummarizationCell = ToolCell
 
 
-def create_cell(cell_type: CellType, content: str, **kwargs) -> Cell:
+def create_cell(cell_type: str, content: str, **kwargs) -> Cell:
     """
     Create a new cell of the specified type
     
     Args:
-        cell_type: The type of cell to create
+        cell_type: The type of cell to create (as string)
         content: Initial content for the cell
         **kwargs: Additional arguments to pass to the cell constructor
         
@@ -448,30 +421,35 @@ def create_cell(cell_type: CellType, content: str, **kwargs) -> Cell:
     start_time = time.time()
     
     try:
-        # Map cell types to their classes
-        cell_classes = {
-            CellType.MARKDOWN: MarkdownCell,
-            CellType.GITHUB: GitHubCell,
-            CellType.SUMMARIZATION: SummarizationCell
-        }
+        # Normalize cell type
+        if cell_type not in ["markdown", "tool"]:
+            # Store original type in metadata
+            if 'metadata' not in kwargs:
+                kwargs['metadata'] = {}
+            kwargs['metadata']['original_type'] = cell_type
+            
+            # Map to TOOL type
+            actual_type = CellType.TOOL
+            
+            # Set tool_name if not already provided
+            if 'tool_name' not in kwargs:
+                kwargs['tool_name'] = cell_type
+        else:
+            actual_type = CellType(cell_type)
         
         # Create the cell
-        if cell_type not in cell_classes:
-            raise ValueError(f"Unsupported cell type: {cell_type}")
-            
-        cell_class = cell_classes[cell_type]
-        
-        # Prepare arguments
-        constructor_args = {"content": content, **kwargs}
-                
-        cell = cell_class(**constructor_args)
+        if actual_type == CellType.MARKDOWN:
+            cell = MarkdownCell(content=content, **kwargs)
+        else:
+            cell = ToolCell(content=content, **kwargs)
         
         process_time = time.time() - start_time
         cell_logger.debug(
             "Cell created",
             extra={
                 'cell_id': str(cell.id),
-                'cell_type': str(cell_type),
+                'cell_type': str(actual_type),
+                'original_type': str(cell_type),
                 'content_length': len(content),
                 'processing_time_ms': round(process_time * 1000, 2)
             }

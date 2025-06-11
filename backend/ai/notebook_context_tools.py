@@ -1,5 +1,19 @@
 from __future__ import annotations
 
+import logging
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from uuid import UUID
+from enum import Enum
+
+from pydantic import BaseModel, Field, UUID4
+import sqlalchemy as sa
+
+from backend.db.database import get_db_session
+from backend.db.models import UploadedFile
+
+if TYPE_CHECKING:
+    from backend.services.notebook_manager import NotebookManager
+
 """Notebook context retrieval tools to expose to Pydantic-AI agents.
 
 These helpers create two retrieval-style function tools that agents can call to
@@ -18,20 +32,6 @@ notebook_id and a `NotebookManager` instance can be captured in a closure.  If
 a `NotebookManager` is not available the helper returns an empty list which is
 safe to pass to the Agent constructor.
 """
-
-import logging
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
-from uuid import UUID
-from enum import Enum
-
-from pydantic import BaseModel, Field, UUID4
-import sqlalchemy as sa
-
-from backend.db.database import get_db_session
-from backend.db.models import UploadedFile
-
-if TYPE_CHECKING:
-    from backend.services.notebook_manager import NotebookManager
 
 logger = logging.getLogger(__name__)
 

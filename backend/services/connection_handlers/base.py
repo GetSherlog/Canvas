@@ -7,7 +7,6 @@ from typing import Type, Dict, Tuple, List, Optional, Any
 from pydantic import BaseModel
 
 from mcp import StdioServerParameters
-from backend.core.types import MCPToolInfo
 
 
 class MCPConnectionHandler(ABC):

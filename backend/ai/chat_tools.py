@@ -10,8 +10,6 @@ from dataclasses import dataclass
 
 import logging
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.cell import CellType, CellResult, CellStatus
 from backend.core.types import ToolCallID
@@ -130,6 +128,74 @@ class NotebookCellTools:
     def get_tools(self) -> List[Tool]:
         """Get all available tools"""
         return self.tools
+    
+    def get_raw_tools(self, notebook_id: Optional[str] = None) -> List[Callable]:
+        """Get raw functions for Agno agents"""
+        # Capture the notebook_id in the closure
+        captured_notebook_id = notebook_id
+        
+        # Create wrapper functions that Agno can use
+        async def create_cell(
+            cell_type: str,
+            content: str,
+            position: Optional[int] = None,
+            metadata: Optional[Dict[str, Any]] = None,
+            tool_call_id: Optional[str] = None,
+            notebook_id: Optional[str] = None
+        ) -> Dict:
+            """Create a new cell in a notebook
+            
+            Args:
+                cell_type: Type of cell to create (markdown, python, sql, log, metric, s3, ai_query)
+                content: Content for the cell
+                position: Position to insert the cell (optional)
+                metadata: Additional metadata for the cell (optional)
+                tool_call_id: ID of the tool call (optional, will be generated if not provided)
+                notebook_id: The UUID of the notebook (optional, uses captured notebook_id if not provided)
+            
+            Returns:
+                Dict with success status and cell details
+            """
+            import uuid
+            # Use the provided notebook_id or fall back to the captured one
+            actual_notebook_id = notebook_id or captured_notebook_id
+            if not actual_notebook_id:
+                return {
+                    "success": False,
+                    "error": "notebook_id is required but was not provided"
+                }
+            
+            params = CreateCellParams(
+                notebook_id=actual_notebook_id,
+                cell_type=cell_type,
+                content=content,
+                position=position,
+                metadata=metadata,
+                tool_call_id=tool_call_id or str(uuid.uuid4())
+            )
+            return await self.create_cell(params)
+        
+        async def list_cells(notebook_id: Optional[str] = None) -> Dict:
+            """List all cells in a notebook
+            
+            Args:
+                notebook_id: The UUID of the notebook (optional, uses captured notebook_id if not provided)
+                
+            Returns:
+                Dict with list of cells
+            """
+            # Use the provided notebook_id or fall back to the captured one
+            actual_notebook_id = notebook_id or captured_notebook_id
+            if not actual_notebook_id:
+                return {
+                    "success": False,
+                    "error": "notebook_id is required but was not provided"
+                }
+            
+            params = ListCellsParams(notebook_id=actual_notebook_id)
+            return await self.list_cells(params)
+        
+        return [create_cell, list_cells]
     
     async def create_cell(self, params: CreateCellParams, **kwargs) -> Dict:
         """Create a new cell in a notebook (using async session)"""

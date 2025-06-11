@@ -6,7 +6,6 @@ Provides a dependency function to get an initialized redis client from app state
 
 import redis.asyncio as redis
 from fastapi import HTTPException, Request
-from backend.config import get_settings
 
 async def get_redis_client(request: Request) -> redis.Redis:
     """

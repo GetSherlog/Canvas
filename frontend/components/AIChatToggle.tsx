@@ -6,10 +6,9 @@ import { Bot } from "lucide-react"
 interface AIChatToggleProps {
   isOpen: boolean
   onToggle: () => void
-  notebookId: string // Make this required
 }
 
-export default function AIChatToggle({ isOpen, onToggle, notebookId }: AIChatToggleProps) {
+export default function AIChatToggle({ isOpen, onToggle }: AIChatToggleProps) {
   // If the panel is open, we don't need to show this button
   if (isOpen) {
     return null

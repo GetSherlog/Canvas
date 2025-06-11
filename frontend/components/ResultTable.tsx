@@ -1,7 +1,7 @@
 import type React from "react"
 
 interface ResultTableProps {
-  data: Record<string, any>[]
+  data: Record<string, string | number | boolean | null>[]
 }
 
 const ResultTable: React.FC<ResultTableProps> = ({ data }) => (

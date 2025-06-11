@@ -1,7 +1,7 @@
 {
   "/_not-found/page": "/_not-found",
   "/canvases/page": "/canvases",
-  "/page": "/",
   "/view-csv/page": "/view-csv",
+  "/page": "/",
   "/canvas/[id]/page": "/canvas/[id]"
 }

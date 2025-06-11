@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 interface GitHubConnectionFormProps {
-  config: Record<string, any>
+  config: Record<string, string>
   onConfigChange: (field: string, value: string) => void
 }
 

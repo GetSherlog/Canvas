@@ -9,6 +9,14 @@ export interface Dependency {
   target_cell_id: string
 }
 
+export interface ServerStatus {
+  running: boolean
+  port?: number
+  sse_url?: string
+  started_at?: number
+  error?: string
+}
+
 const API_BASE_URL = `${BACKEND_URL}/api`
 
 // Export the notebooks API with the correct structure
@@ -40,6 +48,22 @@ export const notebooks = {
 
   sendMessage: async (notebookId: string, cellId: string, message: string): Promise<Cell> => {
     const response = await axios.post(`${API_BASE_URL}/notebooks/${notebookId}/cells/${cellId}/message`, { message })
+    return response.data
+  },
+
+  // Server management operations
+  getServerStatus: async (notebookId: string): Promise<ServerStatus> => {
+    const response = await axios.get(`${API_BASE_URL}/notebooks/${notebookId}/server-status`)
+    return response.data
+  },
+
+  startServer: async (notebookId: string): Promise<{ success: boolean }> => {
+    const response = await axios.post(`${API_BASE_URL}/notebooks/${notebookId}/server/start`)
+    return response.data
+  },
+
+  stopServer: async (notebookId: string): Promise<{ success: boolean }> => {
+    const response = await axios.post(`${API_BASE_URL}/notebooks/${notebookId}/server/stop`)
     return response.data
   },
 }

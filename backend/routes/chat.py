@@ -8,7 +8,7 @@ Completely refactored to use simple Agno streaming instead of complex Pydantic A
 import json
 import logging
 import time
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, Tuple, Optional, Any
 from uuid import uuid4, UUID
 from datetime import datetime, timezone
 import sqlite3
@@ -16,10 +16,9 @@ import shutil
 from pathlib import Path as PyPath
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Form, Path, File, UploadFile
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from backend.ai.chat_agent import (
     ChatAgentService,
@@ -27,7 +26,7 @@ from backend.ai.chat_agent import (
     to_chat_message,
 )
 from backend.db.chat_db import ChatDatabase
-from backend.db.database import get_db, get_async_db_session, get_db_session
+from backend.db.database import get_async_db_session, get_db_session
 from backend.db.models import UploadedFile
 from backend.services.notebook_manager import NotebookManager, get_notebook_manager
 from backend.services.connection_manager import ConnectionManager, get_connection_manager
@@ -108,7 +107,7 @@ def summarize_cell(cell_dict: Dict) -> str:
             cleaned_content = content_summary.replace("\n", " ").strip()
             return cleaned_content
         else:
-            return f"Empty Markdown Cell"
+            return "Empty Markdown Cell"
     
     # Fallback for other cell types if no error/output was processed
     # or result wasn't a dict
@@ -301,7 +300,7 @@ async def _get_session_messages_duplicate_removed(
         
         process_time = time.time() - start_time
         chat_logger.info(
-            f"Retrieved chat session messages",
+            "Retrieved chat session messages",
             extra={
                 'correlation_id': str(uuid4()),
                 'session_id': session_id,
@@ -327,7 +326,7 @@ async def _get_session_messages_duplicate_removed(
     except Exception as e:
         process_time = time.time() - start_time
         chat_logger.error(
-            f"Error getting chat session messages",
+            "Error getting chat session messages",
             extra={
                 'correlation_id': str(uuid4()),
                 'session_id': session_id,
@@ -373,8 +372,10 @@ async def get_chat_agent_for_session(
                 notebook_id_str = session_data.get('notebook_id') if isinstance(session_data, dict) else getattr(session_data, 'notebook_id', None)
                 if notebook_id_str:
                     # Try to repopulate cache (best effort)
-                    try: await redis.set(redis_key, notebook_id_str, ex=settings.chat_session_ttl)
-                    except RedisError as e_set: chat_logger.warning(f"Failed repopulating Redis cache for {session_id}: {e_set}")
+                    try:
+                        await redis.set(redis_key, notebook_id_str, ex=settings.chat_session_ttl)
+                    except RedisError as e_set:
+                        chat_logger.warning(f"Failed repopulating Redis cache for {session_id}: {e_set}")
             
         if notebook_id_str:
             notebook_id = notebook_id_str # Keep as string for initialize method
@@ -425,7 +426,7 @@ async def post_message(
     request_id = str(uuid4())
     try:
         history_from_db = await chat_db.get_messages(session_id)
-    except Exception as e:
+    except Exception:
         chat_logger.error(f"Error retrieving history for session {session_id}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve message history.")
 
@@ -506,7 +507,7 @@ async def post_message(
         # TODO: Update ChatDatabase to accept simple message format during complete Pydantic AI migration
         await chat_db.add_message(session_id, adapt_message_for_db(user_message))  # type: ignore
         chat_logger.info(f"User message saved to DB for session {session_id}")
-    except Exception as e:
+    except Exception:
         # Log error but proceed? Or raise? If DB save fails, history might be inconsistent.
         # Let's raise for now to ensure data integrity.
         chat_logger.error(f"Critical error saving user message for session {session_id}", exc_info=True)
@@ -525,7 +526,6 @@ async def post_message(
 
     async def stream_response():
         nonlocal start_time # Allow modification for response time logging
-        message_buffer: List[Tuple[str, ChatMessage]] = [] # Buffer for DB saving
 
         try:
             # Pass the UPDATED history INCLUDING the current user message
@@ -552,7 +552,7 @@ async def post_message(
                     try:
                          # TODO: Update ChatDatabase to accept simple message format during complete Pydantic AI migration
                          await chat_db.add_message(session_id, adapt_message_for_db(chat_message))  # type: ignore
-                    except Exception as db_err:
+                    except Exception:
                          chat_logger.error(f"Error saving clarification response for session {session_id}", exc_info=True)
                     # End stream after yielding clarification
                     return 
@@ -590,7 +590,7 @@ async def post_message(
 
             process_time = time.time() - start_time
             chat_logger.info(
-                f"Completed chat message stream",
+                "Completed chat message stream",
                 extra={
                     'correlation_id': request_id,
                     'session_id': session_id,
@@ -601,7 +601,7 @@ async def post_message(
         except Exception as e:
             process_time = time.time() - start_time
             chat_logger.error(
-                f"Error during chat stream",
+                "Error during chat stream",
                 extra={
                     'correlation_id': request_id,
                     'session_id': session_id,
@@ -689,7 +689,7 @@ async def delete_session(
 
         process_time = time.time() - start_time
         chat_logger.info(
-            f"Deleted chat session state from Cache, Redis and DB", # Updated log
+            "Deleted chat session state from Cache, Redis and DB", # Updated log
             extra={
                 'correlation_id': str(uuid4()),
                 'session_id': session_id,
@@ -863,7 +863,7 @@ async def get_session_messages(
         
         process_time = time.time() - start_time
         chat_logger.info(
-            f"Retrieved chat session messages",
+            "Retrieved chat session messages",
             extra={
                 'correlation_id': str(uuid4()),
                 'session_id': session_id,
@@ -889,7 +889,7 @@ async def get_session_messages(
     except Exception as e:
         process_time = time.time() - start_time
         chat_logger.error(
-            f"Error getting chat session messages",
+            "Error getting chat session messages",
             extra={
                 'correlation_id': str(uuid4()),
                 'session_id': session_id,

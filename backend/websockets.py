@@ -33,7 +33,7 @@ class WebSocketManager:
             self.active_connections[notebook_id] = set()
         self.active_connections[notebook_id].add(websocket)
         self.logger.info(
-            f"WebSocket connected locally",
+            "WebSocket connected locally",
             extra={'notebook_id': str(notebook_id), 'client': websocket.client}
         )
         # Note: Subscription to Redis happens globally in start_listener
@@ -47,7 +47,7 @@ class WebSocketManager:
                 self.logger.info(f"Last local WebSocket disconnected for notebook {notebook_id}, removing entry.")
             else:
                  self.logger.info(
-                    f"WebSocket disconnected locally",
+                    "WebSocket disconnected locally",
                     extra={'notebook_id': str(notebook_id), 'client': websocket.client}
                  )
         else:
@@ -179,7 +179,8 @@ class WebSocketManager:
                     # Implement basic reconnection logic
                     await asyncio.sleep(5) # Wait before retrying
                     try:
-                        if self._pubsub: await self._pubsub.punsubscribe("ws:notebook:*") # Attempt unsubscribe first
+                        if self._pubsub: 
+                            await self._pubsub.punsubscribe("ws:notebook:*")  # Attempt unsubscribe first
                         if not self.redis_client:
                              self.logger.error("Redis client unavailable during reconnect attempt.")
                              break
@@ -245,7 +246,7 @@ class WebSocketManager:
             # )
         except WebSocketDisconnect:
             self.logger.info(
-                f"WebSocket disconnected during send",
+                "WebSocket disconnected during send",
                 extra={'notebook_id': str(notebook_id), 'client': websocket.client}
             )
             disconnected_clients.add(websocket)

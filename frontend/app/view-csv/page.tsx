@@ -2,18 +2,9 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Papa, { ParseResult, ParseError } from 'papaparse';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import Papa, { ParseResult } from 'papaparse';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { AlertCircle } from 'lucide-react';
-import { columns, CsvRow } from './columns'; // Import columns definition
+import { CsvRow } from './columns'; // Import columns definition
 import { DataTable } from './data-table'; // Import DataTable component
 import { ColumnDef, Row } from '@tanstack/react-table'; // Import Row type
 import { DataTableColumnHeader } from '@/components/ui/data-table-column-header'; // Import column header
@@ -21,33 +12,11 @@ import { DataTableColumnHeader } from '@/components/ui/data-table-column-header'
 const CsvViewerContent: React.FC = () => {
   const searchParams = useSearchParams();
   const [csvData, setCsvData] = useState<CsvRow[]>([]); // Use CsvRow type
-  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [csvColumns, setCsvColumns] = useState<ColumnDef<CsvRow>[]>([]); // State for dynamic columns
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const filePath = searchParams.get('filePath');
 
-  // --- START: Replicated CSV Parsing Logic (Consider moving to a shared util) ---
-  const parseCsv = (csvString: string): string[][] | null => {
-     if (!csvString || typeof csvString !== 'string') return null;
-     
-     // Basic check - allows files without newlines if they have commas (single header row)
-     if (!csvString.includes(',')) return null; 
-
-     const lines = csvString.trim().split(/\r?\n/);
-     if (lines.length === 0) return null;
- 
-     try {
-       return lines.map(line => 
-         // Basic CSV split, doesn't handle quotes containing commas yet
-         line.split(',').map(cell => cell.trim())
-       );
-     } catch (e) {
-       console.error("CSV parsing failed:", e);
-       return null;
-     }
-   };
-   // --- END: Replicated CSV Parsing Logic ---
 
   useEffect(() => {
     // 1. If we have a filePath, fetch from backend as before
@@ -108,7 +77,6 @@ const CsvViewerContent: React.FC = () => {
           setIsLoading(false);
           return;
         }
-        setCsvHeaders(headers);
         setCsvData(results.data); // No need to cast now
 
         // --- Dynamically generate columns for DataTable ---
@@ -132,52 +100,12 @@ const CsvViewerContent: React.FC = () => {
       },
       error: (err: Error) => { // Use standard Error type
         console.error("CSV parsing error:", err);
-        // Check if it's a ParseError to potentially access specific fields
-        if ('code' in err && 'message' in err) { 
-            setError(`Failed to parse CSV: ${err.message} (Code: ${(err as any).code})`);
-        } else {
-            setError(`Failed to parse CSV: ${err.message}`);
-        }
+        setError(`Failed to parse CSV: ${err.message}`);
         setIsLoading(false);
       }
     });
   };
 
-  const renderFullCsvTable = (data: string[][]): React.ReactNode => {
-    if (!data || data.length === 0) return <p className="text-sm text-gray-500">Empty CSV data.</p>;
-
-    const headers = data[0];
-    const rows = data.slice(1);
-
-    return (
-      // Make table container scrollable vertically and horizontally
-      <div className="overflow-auto border rounded-md max-h-[calc(100vh-150px)]"> {/* Adjust max-h as needed */}
-        <Table className="min-w-full text-sm">
-          <TableHeader className="bg-gray-100 sticky top-0 z-10"> {/* Sticky header */}
-            <TableRow>
-              {headers.map((header, index) => (
-                <TableHead key={index} className="px-3 py-2 font-medium text-gray-700 whitespace-nowrap">{header}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row, rowIndex) => (
-              <TableRow key={rowIndex} className="hover:bg-gray-50">
-                {row.map((cell, cellIndex) => (
-                  <TableCell key={cellIndex} className="px-3 py-2 whitespace-nowrap">{cell}</TableCell>
-                ))}
-              </TableRow>
-            ))}
-            {rows.length === 0 && (
-              <TableRow>
-                 <TableCell colSpan={headers.length} className="text-center text-gray-500 py-6">No data rows found.</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-    );
-  };
 
   if (isLoading) {
     return <div>Loading CSV data...</div>;

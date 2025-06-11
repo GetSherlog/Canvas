@@ -1,21 +1,14 @@
-import asyncio
-import json
 import os
 import time
-from typing import Dict, Set, Tuple
+from typing import Dict
 from uuid import UUID, uuid4
 from pathlib import Path
 from contextlib import asynccontextmanager
-import logging
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import redis.asyncio as redis
-from fastapi.staticfiles import StaticFiles
-from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.responses import Response, FileResponse
 
 from backend.config import get_settings
 from backend.core.execution import CellExecutor, ExecutionQueue
@@ -30,8 +23,6 @@ from backend.core.logging import setup_logging, get_logger
 from backend.services.connection_handlers.registry import get_all_handler_types
 from backend.websockets import WebSocketManager
 from backend.db.database import init_db, async_session_factory # Import the factory directly
-from backend.db.models import Base
-from backend.routes import notebooks, connections
 
 # Initialize loggers
 app_loggers = setup_logging()
@@ -63,10 +54,8 @@ async def lifespan(app: FastAPI):
     
     # Import connection handlers to trigger registration
     try:
-        # These imports execute the handler files, which call register_handler
-        from backend.services.connection_handlers import github_handler
-        from backend.services.connection_handlers import jira_handler
-        from backend.services.connection_handlers import git_repo_handler # Added import
+        # Import the workspace handler which is the only one we need now
+        from backend.services.connection_handlers import workspace_handler  # noqa: F401
         app_logger.info(f"Successfully imported and registered connection handlers: {get_all_handler_types()}")
     except ImportError as e:
         app_logger.error(f"Failed to import connection handlers: {e}", exc_info=True)
@@ -100,7 +89,7 @@ async def lifespan(app: FastAPI):
         raise
     
     # --- Initialize Redis client ---
-    app_logger.info("Initializing Redis connection")
+    app_logger.info(f"Initializing Redis connection to {settings.redis_host}:{settings.redis_port}")
     try:
         redis_client = await redis.from_url(
             f"redis://{settings.redis_host}:{settings.redis_port}/{settings.redis_db}",
@@ -276,7 +265,7 @@ app.add_middleware(
 # Register routers
 app.include_router(notebooks_router, prefix="/api/notebooks", tags=["notebooks"])
 app.include_router(connections_router, prefix="/api/connections", tags=["connections"])
-app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
+app.include_router(chat_router, prefix="/api/v1/chat", tags=["chat"])
 app.include_router(models_router, prefix="/api/models", tags=["models"])
 
 # Enhanced request logging middleware
@@ -289,7 +278,7 @@ async def log_requests(request: Request, call_next):
     request.state.correlation_id = request_id
     
     request_logger.info(
-        f"Request started",
+        "Request started",
         extra={
             'correlation_id': request_id,
             'method': request.method,
@@ -303,7 +292,7 @@ async def log_requests(request: Request, call_next):
         response = await call_next(request)
         process_time = time.time() - start_time
         request_logger.info(
-            f"Request completed",
+            "Request completed",
             extra={
                 'correlation_id': request_id,
                 'status_code': response.status_code,
@@ -314,7 +303,7 @@ async def log_requests(request: Request, call_next):
     except Exception as e:
         process_time = time.time() - start_time
         request_logger.error(
-            f"Request failed",
+            "Request failed",
             extra={
                 'correlation_id': request_id,
                 'error': str(e),

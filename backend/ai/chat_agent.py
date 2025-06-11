@@ -3,13 +3,13 @@ Simplified Chat Agent using Agno - completely replaces complex Pydantic AI syste
 """
 import logging
 import time
-from typing import Any, List, Optional, Tuple, AsyncGenerator
+from typing import Any, Optional
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from uuid import UUID
 
-from backend.ai.investigation_system import InvestigationSystem
+from backend.ai.chat_router import ChatRouter
 from backend.services.notebook_manager import NotebookManager
-from backend.core.notebook import Notebook
 from pydantic import BaseModel
 
 chat_agent_logger = logging.getLogger("ai.chat_agent")
@@ -46,21 +46,21 @@ def to_chat_message(data: Any) -> ChatMessage:
 class ChatAgentService:
     """
     Completely simplified chat agent using ONLY Agno
-    Replaces the entire complex Pydantic AI system with ~100 lines
+    Now uses ChatRouter for intelligent query routing
     """
     
     def __init__(self, notebook_id: str, notebook_manager: NotebookManager):
         self.notebook_id = notebook_id
         self.notebook_manager = notebook_manager
-        self.investigation_system = InvestigationSystem(notebook_id, notebook_manager)
+        self.chat_router = ChatRouter(notebook_id, notebook_manager)
         
-        chat_agent_logger.info(f"ChatAgentService initialized for notebook {notebook_id}")
+        chat_agent_logger.info(f"ChatAgentService initialized with ChatRouter for notebook {notebook_id}")
     
     async def initialize(self, db_session):
         """Initialize the service with database session"""
         try:
             notebook_uuid = UUID(self.notebook_id)
-            notebook: Notebook = await self.notebook_manager.get_notebook(
+            _ = await self.notebook_manager.get_notebook(
                 db=db_session, notebook_id=notebook_uuid
             )
                 
@@ -74,51 +74,29 @@ class ChatAgentService:
         self,
         prompt: str,
         session_id: str,
-        message_history: List[Any] = [],
-    ) -> AsyncGenerator[Tuple[str, Any], None]:
+        message_history: Optional[list[Any]] = None,
+    ) -> AsyncGenerator[tuple[str, Any], None]:
         """
-        Process a user message using Agno - VASTLY simpler than the old system!
+        Process a user message using ChatRouter for intelligent routing.
         
-        Old system: 3000+ lines of complex code with 40+ event types
-        New system: Simple content streaming with Agno teams
+        Simple queries are handled by a lightweight agent, complex queries
+        are routed to the InvestigationSystem.
         """
         chat_agent_logger.info(f"Handling message in session {session_id}: '{prompt}'")
         start_time = time.time()
         
         try:
-            # Use InvestigationSystem to investigate - replaces the old complex system!
-            async for result in self.investigation_system.investigate(
-                query=prompt,
-                investigation_type="general",
-                notebook_context=self._get_notebook_context()
+            # Use ChatRouter to handle the message
+            async for event_type, event_data in self.chat_router.handle_message(
+                prompt=prompt,
+                session_id=session_id,
+                message_history=message_history
             ):
-                # Convert Agno results to simple responses
-                if result["type"] == "status":
-                    yield self._create_simple_response(
-                        result["message"], 
-                        "agent_iterating"
-                    )
-                
-                elif result["type"] in ["investigation_progress", "final_report"]:
-                    # Stream the content directly - no complex event matching needed!
-                    yield self._create_simple_response(
-                        result["content"], 
-                        "complete" if result.get("final") else "agent_iterating"
-                    )
-                
-                elif result["type"] == "error":
-                    yield self._create_simple_response(
-                        f"Error: {result['message']}", 
-                        "error"
-                    )
-
-            # Final completion message
-            response_time = time.time() - start_time
-            yield self._create_simple_response(
-                f"Investigation completed in {response_time:.1f}s", 
-                "complete"
-            )
+                # Pass through all events from the router
+                yield event_type, event_data
             
+            # Log success metrics
+            response_time = time.time() - start_time
             chat_agent_logger.info(
                 f"Message handled successfully in session {session_id}",
                 extra={'session_id': session_id, 'response_time_ms': int(response_time * 1000)}
@@ -133,7 +111,11 @@ class ChatAgentService:
             )
             
             # Send error response
-            yield self._create_simple_response(f"Investigation failed: {str(e)}", "error")
+            yield "error", {
+                "role": "error",
+                "content": f"Failed to process message: {str(e)}",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
             raise
     
     def _get_notebook_context(self) -> str:
@@ -141,7 +123,7 @@ class ChatAgentService:
         # TODO: Implement simple context extraction if needed
         return ""
     
-    def _create_simple_response(self, message: str, status: str) -> Tuple[str, Any]:
+    def _create_simple_response(self, message: str, status: str) -> tuple[str, Any]:
         """Create a simple response - replaces complex event creation"""
         # Create a simple response object that can be converted to ChatMessage
         response_data = {

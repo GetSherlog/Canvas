@@ -4,12 +4,10 @@ Database models for connections
 
 import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Set
+from typing import Dict, Any
 
-from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, JSON, func, Text, Integer, Enum, Float, UUID, Index
-from sqlalchemy.orm import relationship, declarative_base
-from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.dialects.postgresql import UUID as PgUUID
+from sqlalchemy import Column, String, DateTime, ForeignKey, JSON, Text, Integer, Float, UUID, Index
+from sqlalchemy.orm import relationship
 
 from backend.db.database import Base
 

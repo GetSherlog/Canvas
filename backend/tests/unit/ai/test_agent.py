@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, ANY as AnyMock # Import ANY
 from uuid import uuid4, UUID # Import UUID
@@ -6,7 +5,6 @@ from uuid import uuid4, UUID # Import UUID
 from backend.ai.agent import AIAgent
 from backend.ai.models import InvestigationPlanModel, InvestigationStepModel, StepType
 from backend.ai.events import StepExecutionCompleteEvent, StepStartedEvent, PlanCreatedEvent, InvestigationCompleteEvent
-from backend.ai.step_result import StepResult
 from backend.core.notebook import Notebook # Added import
 
 # Mark all tests in this module as asyncio

@@ -1,0 +1,697 @@
+Starting Sherlog Canvas...
+Git check skipped - now used inside containers where needed
++ echo 'Stopping running containers...'
+Stopping running containers...
++ docker-compose down
++ echo 'Pulling ghcr.io/navneet-mkr/logai-mcp:0.1.5 if not present...'
+Pulling ghcr.io/navneet-mkr/logai-mcp:0.1.5 if not present...
++ docker pull ghcr.io/navneet-mkr/logai-mcp:0.1.5
+0.1.5: Pulling from navneet-mkr/logai-mcp
+Digest: sha256:031b79348bb889880f5ce082200557a00ba45cd7d58f4ebe0f1fedffd03205be
+Status: Image is up to date for ghcr.io/navneet-mkr/logai-mcp:0.1.5
+ghcr.io/navneet-mkr/logai-mcp:0.1.5
++ echo 'Pulling ghcr.io/github/github-mcp-server:latest if not present...'
+Pulling ghcr.io/github/github-mcp-server:latest if not present...
++ docker pull ghcr.io/github/github-mcp-server:latest
+latest: Pulling from github/github-mcp-server
+Digest: sha256:9cd2504664e109dc2db016c71f38c6256a2c258de984566082a55f6923b2d044
+Status: Image is up to date for ghcr.io/github/github-mcp-server:latest
+ghcr.io/github/github-mcp-server:latest
++ echo 'Removing old Docker images...'
+Removing old Docker images...
++ docker-compose rm -f
+No stopped containers
++ echo 'Building Docker images...'
+Building Docker images...
++ docker-compose build
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [backend internal] load build definition from Dockerfile.backend
+#1 transferring dockerfile: 2.12kB 0.0s done
+#1 DONE 0.0s
+
+#2 [backend internal] load metadata for docker.io/library/python:3.11-slim
+#2 DONE 0.5s
+
+#3 [backend internal] load .dockerignore
+#3 transferring context: 706B 0.0s done
+#3 DONE 0.0s
+
+#4 [backend 1/8] FROM docker.io/library/python:3.11-slim@sha256:7a3ed1226224bcc1fe5443262363d42f48cf832a540c1836ba8ccbeaadf8637c
+#4 DONE 0.0s
+
+#5 [backend internal] load build context
+#5 transferring context: 55.12kB 0.3s done
+#5 DONE 0.4s
+
+#6 [backend 2/8] WORKDIR /app
+#6 CACHED
+
+#7 [backend 3/8] RUN apt-get update && apt-get install -y --no-install-recommends     ca-certificates     curl     git     build-essential     && rm -rf /var/lib/apt/lists/*
+#7 CACHED
+
+#8 [backend 4/8] RUN install -m 0755 -d /etc/apt/keyrings     && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc     && chmod a+r /etc/apt/keyrings/docker.asc     && echo       "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian       $(. /etc/os-release && echo "$VERSION_CODENAME") stable" |       tee /etc/apt/sources.list.d/docker.list > /dev/null     && apt-get update     && apt-get install -y --no-install-recommends docker-ce-cli     && rm -rf /var/lib/apt/lists/*
+#8 CACHED
+
+#9 [backend 5/8] COPY requirements.txt .
+#9 CACHED
+
+#10 [backend 6/8] RUN pip install --no-cache-dir -r requirements.txt
+#10 2.447 Collecting fastapi>=0.115.12 (from -r requirements.txt (line 2))
+#10 2.567   Downloading fastapi-0.115.12-py3-none-any.whl.metadata (27 kB)
+#10 2.663 Collecting uvicorn>=0.34.2 (from -r requirements.txt (line 3))
+#10 2.700   Downloading uvicorn-0.34.3-py3-none-any.whl.metadata (6.5 kB)
+#10 2.817 Collecting websockets>=15.0.1 (from -r requirements.txt (line 4))
+#10 2.831   Downloading websockets-15.0.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (6.8 kB)
+#10 2.982 Collecting pydantic>=2.11.4 (from -r requirements.txt (line 5))
+#10 2.994   Downloading pydantic-2.11.5-py3-none-any.whl.metadata (67 kB)
+#10 3.006      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 67.2/67.2 kB 8.3 MB/s eta 0:00:00
+#10 3.031 Collecting pydantic-settings>=2.9.1 (from -r requirements.txt (line 6))
+#10 3.049   Downloading pydantic_settings-2.9.1-py3-none-any.whl.metadata (3.8 kB)
+#10 3.087 Collecting starlette>=0.46.2 (from -r requirements.txt (line 7))
+#10 3.100   Downloading starlette-0.47.0-py3-none-any.whl.metadata (6.2 kB)
+#10 3.134 Collecting agno>=1.5.8 (from -r requirements.txt (line 10))
+#10 3.148   Downloading agno-1.5.9-py3-none-any.whl.metadata (42 kB)
+#10 3.155      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 42.7/42.7 kB 6.4 MB/s eta 0:00:00
+#10 3.226 Collecting openai>=1.12.0 (from -r requirements.txt (line 11))
+#10 3.240   Downloading openai-1.84.0-py3-none-any.whl.metadata (25 kB)
+#10 3.271 Collecting mcp>=1.9.3 (from -r requirements.txt (line 12))
+#10 3.286   Downloading mcp-1.9.3-py3-none-any.whl.metadata (28 kB)
+#10 3.360 Collecting httpx>=0.25.1 (from -r requirements.txt (line 15))
+#10 3.379   Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+#10 3.966 Collecting aiohttp>=3.9.0 (from -r requirements.txt (line 16))
+#10 3.984   Downloading aiohttp-3.12.9-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (7.6 kB)
+#10 4.013 Collecting docker>=6.1.0 (from -r requirements.txt (line 19))
+#10 4.026   Downloading docker-7.1.0-py3-none-any.whl.metadata (3.8 kB)
+#10 4.045 Collecting aiomysql>=0.2.0 (from -r requirements.txt (line 22))
+#10 4.059   Downloading aiomysql-0.2.0-py3-none-any.whl.metadata (11 kB)
+#10 4.086 Collecting aiopg>=1.4.0 (from -r requirements.txt (line 23))
+#10 4.100   Downloading aiopg-1.4.0-py3-none-any.whl.metadata (15 kB)
+#10 4.132 Collecting aiosqlite>=0.21.0 (from -r requirements.txt (line 24))
+#10 4.145   Downloading aiosqlite-0.21.0-py3-none-any.whl.metadata (4.3 kB)
+#10 4.480 Collecting sqlalchemy>=2.0.40 (from -r requirements.txt (line 25))
+#10 4.494   Downloading sqlalchemy-2.0.41-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (9.6 kB)
+#10 4.619 Collecting pandas>=2.1.3 (from -r requirements.txt (line 28))
+#10 4.636   Downloading pandas-2.3.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (91 kB)
+#10 4.650      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 91.2/91.2 kB 6.7 MB/s eta 0:00:00
+#10 4.924 Collecting numpy>=1.26.2 (from -r requirements.txt (line 29))
+#10 4.948   Downloading numpy-2.2.6-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (63 kB)
+#10 4.959      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 63.4/63.4 kB 5.6 MB/s eta 0:00:00
+#10 5.120 Collecting matplotlib>=3.8.2 (from -r requirements.txt (line 30))
+#10 5.138   Downloading matplotlib-3.10.3-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (11 kB)
+#10 5.162 Collecting python-dotenv>=1.0.0 (from -r requirements.txt (line 33))
+#10 5.173   Downloading python_dotenv-1.1.0-py3-none-any.whl.metadata (24 kB)
+#10 5.244 Collecting ujson>=5.8.0 (from -r requirements.txt (line 34))
+#10 5.257   Downloading ujson-5.10.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (9.3 kB)
+#10 5.586 Collecting orjson>=3.9.10 (from -r requirements.txt (line 35))
+#10 5.603   Downloading orjson-3.10.18-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (41 kB)
+#10 5.620      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 41.9/41.9 kB 3.3 MB/s eta 0:00:00
+#10 5.646 Collecting python-multipart>=0.0.20 (from -r requirements.txt (line 36))
+#10 5.658   Downloading python_multipart-0.0.20-py3-none-any.whl.metadata (1.8 kB)
+#10 5.680 Collecting aiofiles>=24.1.0 (from -r requirements.txt (line 37))
+#10 5.693   Downloading aiofiles-24.1.0-py3-none-any.whl.metadata (10 kB)
+#10 5.712 Collecting gitingest>=0.1.3 (from -r requirements.txt (line 38))
+#10 5.726   Downloading gitingest-0.1.4-py3-none-any.whl.metadata (8.2 kB)
+#10 5.814 Collecting yt-dlp==2025.4.30 (from -r requirements.txt (line 45))
+#10 5.830   Downloading yt_dlp-2025.4.30-py3-none-any.whl.metadata (173 kB)
+#10 5.859      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 173.3/173.3 kB 6.0 MB/s eta 0:00:00
+#10 5.905 Collecting redis[hiredis] (from -r requirements.txt (line 43))
+#10 5.917   Downloading redis-6.2.0-py3-none-any.whl.metadata (10 kB)
+#10 5.944 Collecting starlette>=0.46.2 (from -r requirements.txt (line 7))
+#10 5.964   Downloading starlette-0.46.2-py3-none-any.whl.metadata (6.2 kB)
+#10 6.000 Collecting typing-extensions>=4.8.0 (from fastapi>=0.115.12->-r requirements.txt (line 2))
+#10 6.013   Downloading typing_extensions-4.14.0-py3-none-any.whl.metadata (3.0 kB)
+#10 6.043 Collecting click>=7.0 (from uvicorn>=0.34.2->-r requirements.txt (line 3))
+#10 6.063   Downloading click-8.2.1-py3-none-any.whl.metadata (2.5 kB)
+#10 6.079 Collecting h11>=0.8 (from uvicorn>=0.34.2->-r requirements.txt (line 3))
+#10 6.093   Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+#10 6.114 Collecting annotated-types>=0.6.0 (from pydantic>=2.11.4->-r requirements.txt (line 5))
+#10 6.128   Downloading annotated_types-0.7.0-py3-none-any.whl.metadata (15 kB)
+#10 6.982 Collecting pydantic-core==2.33.2 (from pydantic>=2.11.4->-r requirements.txt (line 5))
+#10 6.996   Downloading pydantic_core-2.33.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (6.8 kB)
+#10 7.016 Collecting typing-inspection>=0.4.0 (from pydantic>=2.11.4->-r requirements.txt (line 5))
+#10 7.028   Downloading typing_inspection-0.4.1-py3-none-any.whl.metadata (2.6 kB)
+#10 7.081 Collecting anyio<5,>=3.6.2 (from starlette>=0.46.2->-r requirements.txt (line 7))
+#10 7.094   Downloading anyio-4.9.0-py3-none-any.whl.metadata (4.7 kB)
+#10 7.164 Collecting docstring-parser (from agno>=1.5.8->-r requirements.txt (line 10))
+#10 7.177   Downloading docstring_parser-0.16-py3-none-any.whl.metadata (3.0 kB)
+#10 7.214 Collecting gitpython (from agno>=1.5.8->-r requirements.txt (line 10))
+#10 7.311   Downloading GitPython-3.1.44-py3-none-any.whl.metadata (13 kB)
+#10 7.353 Collecting pyyaml (from agno>=1.5.8->-r requirements.txt (line 10))
+#10 7.366   Downloading PyYAML-6.0.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (2.1 kB)
+#10 7.427 Collecting rich (from agno>=1.5.8->-r requirements.txt (line 10))
+#10 7.441   Downloading rich-14.0.0-py3-none-any.whl.metadata (18 kB)
+#10 7.464 Collecting tomli (from agno>=1.5.8->-r requirements.txt (line 10))
+#10 7.477   Downloading tomli-2.2.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (11 kB)
+#10 7.537 Collecting typer (from agno>=1.5.8->-r requirements.txt (line 10))
+#10 7.548   Downloading typer-0.16.0-py3-none-any.whl.metadata (15 kB)
+#10 7.578 Collecting distro<2,>=1.7.0 (from openai>=1.12.0->-r requirements.txt (line 11))
+#10 7.596   Downloading distro-1.9.0-py3-none-any.whl.metadata (6.8 kB)
+#10 7.660 Collecting jiter<1,>=0.4.0 (from openai>=1.12.0->-r requirements.txt (line 11))
+#10 7.679   Downloading jiter-0.10.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (5.2 kB)
+#10 7.712 Collecting sniffio (from openai>=1.12.0->-r requirements.txt (line 11))
+#10 7.724   Downloading sniffio-1.3.1-py3-none-any.whl.metadata (3.9 kB)
+#10 7.770 Collecting tqdm>4 (from openai>=1.12.0->-r requirements.txt (line 11))
+#10 7.784   Downloading tqdm-4.67.1-py3-none-any.whl.metadata (57 kB)
+#10 7.792      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 57.7/57.7 kB 12.4 MB/s eta 0:00:00
+#10 7.825 Collecting httpx-sse>=0.4 (from mcp>=1.9.3->-r requirements.txt (line 12))
+#10 7.840   Downloading httpx_sse-0.4.0-py3-none-any.whl.metadata (9.0 kB)
+#10 7.891 Collecting sse-starlette>=1.6.1 (from mcp>=1.9.3->-r requirements.txt (line 12))
+#10 7.915   Downloading sse_starlette-2.3.6-py3-none-any.whl.metadata (10 kB)
+#10 8.037 Collecting certifi (from httpx>=0.25.1->-r requirements.txt (line 15))
+#10 8.050   Downloading certifi-2025.4.26-py3-none-any.whl.metadata (2.5 kB)
+#10 8.076 Collecting httpcore==1.* (from httpx>=0.25.1->-r requirements.txt (line 15))
+#10 8.089   Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+#10 8.119 Collecting idna (from httpx>=0.25.1->-r requirements.txt (line 15))
+#10 8.131   Downloading idna-3.10-py3-none-any.whl.metadata (10 kB)
+#10 8.170 Collecting aiohappyeyeballs>=2.5.0 (from aiohttp>=3.9.0->-r requirements.txt (line 16))
+#10 8.185   Downloading aiohappyeyeballs-2.6.1-py3-none-any.whl.metadata (5.9 kB)
+#10 8.204 Collecting aiosignal>=1.1.2 (from aiohttp>=3.9.0->-r requirements.txt (line 16))
+#10 8.221   Downloading aiosignal-1.3.2-py2.py3-none-any.whl.metadata (3.8 kB)
+#10 8.247 Collecting attrs>=17.3.0 (from aiohttp>=3.9.0->-r requirements.txt (line 16))
+#10 8.261   Downloading attrs-25.3.0-py3-none-any.whl.metadata (10 kB)
+#10 8.325 Collecting frozenlist>=1.1.1 (from aiohttp>=3.9.0->-r requirements.txt (line 16))
+#10 8.338   Downloading frozenlist-1.6.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (17 kB)
+#10 8.540 Collecting multidict<7.0,>=4.5 (from aiohttp>=3.9.0->-r requirements.txt (line 16))
+#10 8.554   Downloading multidict-6.4.4-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (5.3 kB)
+#10 8.597 Collecting propcache>=0.2.0 (from aiohttp>=3.9.0->-r requirements.txt (line 16))
+#10 8.610   Downloading propcache-0.3.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (10 kB)
+#10 8.884 Collecting yarl<2.0,>=1.17.0 (from aiohttp>=3.9.0->-r requirements.txt (line 16))
+#10 8.897   Downloading yarl-1.20.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (72 kB)
+#10 8.909      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 72.4/72.4 kB 7.2 MB/s eta 0:00:00
+#10 8.973 Collecting requests>=2.26.0 (from docker>=6.1.0->-r requirements.txt (line 19))
+#10 8.988   Downloading requests-2.32.3-py3-none-any.whl.metadata (4.6 kB)
+#10 9.044 Collecting urllib3>=1.26.0 (from docker>=6.1.0->-r requirements.txt (line 19))
+#10 9.056   Downloading urllib3-2.4.0-py3-none-any.whl.metadata (6.5 kB)
+#10 9.080 Collecting PyMySQL>=1.0 (from aiomysql>=0.2.0->-r requirements.txt (line 22))
+#10 9.092   Downloading PyMySQL-1.1.1-py3-none-any.whl.metadata (4.4 kB)
+#10 9.165 Collecting psycopg2-binary>=2.9.5 (from aiopg>=1.4.0->-r requirements.txt (line 23))
+#10 9.179   Downloading psycopg2_binary-2.9.10-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (4.9 kB)
+#10 9.202 Collecting async-timeout<5.0,>=3.0 (from aiopg>=1.4.0->-r requirements.txt (line 23))
+#10 9.214   Downloading async_timeout-4.0.3-py3-none-any.whl.metadata (4.2 kB)
+#10 9.547 Collecting greenlet>=1 (from sqlalchemy>=2.0.40->-r requirements.txt (line 25))
+#10 9.559   Downloading greenlet-3.2.3-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl.metadata (4.1 kB)
+#10 9.614 Collecting python-dateutil>=2.8.2 (from pandas>=2.1.3->-r requirements.txt (line 28))
+#10 9.627   Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+#10 9.681 Collecting pytz>=2020.1 (from pandas>=2.1.3->-r requirements.txt (line 28))
+#10 9.699   Downloading pytz-2025.2-py2.py3-none-any.whl.metadata (22 kB)
+#10 9.724 Collecting tzdata>=2022.7 (from pandas>=2.1.3->-r requirements.txt (line 28))
+#10 9.747   Downloading tzdata-2025.2-py2.py3-none-any.whl.metadata (1.4 kB)
+#10 9.860 Collecting contourpy>=1.0.1 (from matplotlib>=3.8.2->-r requirements.txt (line 30))
+#10 9.873   Downloading contourpy-1.3.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (5.5 kB)
+#10 9.893 Collecting cycler>=0.10 (from matplotlib>=3.8.2->-r requirements.txt (line 30))
+#10 9.905   Downloading cycler-0.12.1-py3-none-any.whl.metadata (3.8 kB)
+#10 10.06 Collecting fonttools>=4.22.0 (from matplotlib>=3.8.2->-r requirements.txt (line 30))
+#10 10.08   Downloading fonttools-4.58.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (106 kB)
+#10 10.11      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 106.1/106.1 kB 3.9 MB/s eta 0:00:00
+#10 10.20 Collecting kiwisolver>=1.3.1 (from matplotlib>=3.8.2->-r requirements.txt (line 30))
+#10 10.21   Downloading kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (6.2 kB)
+#10 10.24 Collecting packaging>=20.0 (from matplotlib>=3.8.2->-r requirements.txt (line 30))
+#10 10.26   Downloading packaging-25.0-py3-none-any.whl.metadata (3.3 kB)
+#10 10.49 Collecting pillow>=8 (from matplotlib>=3.8.2->-r requirements.txt (line 30))
+#10 10.51   Downloading pillow-11.2.1-cp311-cp311-manylinux_2_28_aarch64.whl.metadata (8.9 kB)
+#10 10.54 Collecting pyparsing>=2.3.1 (from matplotlib>=3.8.2->-r requirements.txt (line 30))
+#10 10.57   Downloading pyparsing-3.2.3-py3-none-any.whl.metadata (5.0 kB)
+#10 10.62 Collecting tiktoken (from gitingest>=0.1.3->-r requirements.txt (line 38))
+#10 10.64   Downloading tiktoken-0.9.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (6.7 kB)
+#10 10.74 Collecting hiredis>=3.2.0 (from redis[hiredis]->-r requirements.txt (line 43))
+#10 10.76   Downloading hiredis-3.2.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (7.2 kB)
+#10 10.93 Collecting six>=1.5 (from python-dateutil>=2.8.2->pandas>=2.1.3->-r requirements.txt (line 28))
+#10 10.94   Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+#10 11.05 Collecting charset-normalizer<4,>=2 (from requests>=2.26.0->docker>=6.1.0->-r requirements.txt (line 19))
+#10 11.06   Downloading charset_normalizer-3.4.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (35 kB)
+#10 11.17 Collecting gitdb<5,>=4.0.1 (from gitpython->agno>=1.5.8->-r requirements.txt (line 10))
+#10 11.19   Downloading gitdb-4.0.12-py3-none-any.whl.metadata (1.2 kB)
+#10 11.23 Collecting markdown-it-py>=2.2.0 (from rich->agno>=1.5.8->-r requirements.txt (line 10))
+#10 11.26   Downloading markdown_it_py-3.0.0-py3-none-any.whl.metadata (6.9 kB)
+#10 11.30 Collecting pygments<3.0.0,>=2.13.0 (from rich->agno>=1.5.8->-r requirements.txt (line 10))
+#10 11.32   Downloading pygments-2.19.1-py3-none-any.whl.metadata (2.5 kB)
+#10 11.92 Collecting regex>=2022.1.18 (from tiktoken->gitingest>=0.1.3->-r requirements.txt (line 38))
+#10 11.94   Downloading regex-2024.11.6-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (40 kB)
+#10 11.94      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 40.5/40.5 kB 53.5 MB/s eta 0:00:00
+#10 11.98 Collecting shellingham>=1.3.0 (from typer->agno>=1.5.8->-r requirements.txt (line 10))
+#10 12.00   Downloading shellingham-1.5.4-py2.py3-none-any.whl.metadata (3.5 kB)
+#10 12.03 Collecting smmap<6,>=3.0.1 (from gitdb<5,>=4.0.1->gitpython->agno>=1.5.8->-r requirements.txt (line 10))
+#10 12.05   Downloading smmap-5.0.2-py3-none-any.whl.metadata (4.3 kB)
+#10 12.08 Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich->agno>=1.5.8->-r requirements.txt (line 10))
+#10 12.10   Downloading mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
+#10 12.16 Downloading yt_dlp-2025.4.30-py3-none-any.whl (3.2 MB)
+#10 13.34    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.2/3.2 MB 2.8 MB/s eta 0:00:00
+#10 13.35 Downloading fastapi-0.115.12-py3-none-any.whl (95 kB)
+#10 13.37    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 95.2/95.2 kB 5.2 MB/s eta 0:00:00
+#10 13.38 Downloading uvicorn-0.34.3-py3-none-any.whl (62 kB)
+#10 13.39    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 62.4/62.4 kB 6.2 MB/s eta 0:00:00
+#10 13.40 Downloading websockets-15.0.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (182 kB)
+#10 13.45    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 182.9/182.9 kB 4.4 MB/s eta 0:00:00
+#10 13.46 Downloading pydantic-2.11.5-py3-none-any.whl (444 kB)
+#10 13.67    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 444.2/444.2 kB 2.1 MB/s eta 0:00:00
+#10 13.68 Downloading pydantic_core-2.33.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (1.9 MB)
+#10 14.19    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.9/1.9 MB 3.8 MB/s eta 0:00:00
+#10 14.20 Downloading pydantic_settings-2.9.1-py3-none-any.whl (44 kB)
+#10 14.21    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 44.4/44.4 kB 8.2 MB/s eta 0:00:00
+#10 14.22 Downloading starlette-0.46.2-py3-none-any.whl (72 kB)
+#10 14.24    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 72.0/72.0 kB 6.2 MB/s eta 0:00:00
+#10 14.26 Downloading agno-1.5.9-py3-none-any.whl (833 kB)
+#10 14.41    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 833.8/833.8 kB 5.3 MB/s eta 0:00:00
+#10 14.43 Downloading openai-1.84.0-py3-none-any.whl (725 kB)
+#10 14.58    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 725.5/725.5 kB 4.9 MB/s eta 0:00:00
+#10 14.60 Downloading mcp-1.9.3-py3-none-any.whl (131 kB)
+#10 14.63    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 131.1/131.1 kB 5.1 MB/s eta 0:00:00
+#10 14.64 Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+#10 14.68    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 73.5/73.5 kB 2.4 MB/s eta 0:00:00
+#10 14.69 Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+#10 14.72    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 78.8/78.8 kB 3.9 MB/s eta 0:00:00
+#10 14.74 Downloading aiohttp-3.12.9-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (1.7 MB)
+#10 15.08    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.7/1.7 MB 5.0 MB/s eta 0:00:00
+#10 15.10 Downloading docker-7.1.0-py3-none-any.whl (147 kB)
+#10 15.13    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 147.8/147.8 kB 5.4 MB/s eta 0:00:00
+#10 15.14 Downloading aiomysql-0.2.0-py3-none-any.whl (44 kB)
+#10 15.15    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 44.2/44.2 kB 6.7 MB/s eta 0:00:00
+#10 15.18 Downloading aiopg-1.4.0-py3-none-any.whl (34 kB)
+#10 15.20 Downloading aiosqlite-0.21.0-py3-none-any.whl (15 kB)
+#10 15.22 Downloading sqlalchemy-2.0.41-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (3.3 MB)
+#10 15.93    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.3/3.3 MB 4.6 MB/s eta 0:00:00
+#10 15.95 Downloading pandas-2.3.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (11.8 MB)
+#10 18.40    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 11.8/11.8 MB 4.8 MB/s eta 0:00:00
+#10 18.42 Downloading numpy-2.2.6-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (14.3 MB)
+#10 21.42    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 14.3/14.3 MB 4.8 MB/s eta 0:00:00
+#10 21.44 Downloading matplotlib-3.10.3-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (8.5 MB)
+#10 23.49    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 8.5/8.5 MB 4.1 MB/s eta 0:00:00
+#10 23.51 Downloading python_dotenv-1.1.0-py3-none-any.whl (20 kB)
+#10 23.52 Downloading ujson-5.10.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (51 kB)
+#10 23.53    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 52.0/52.0 kB 7.6 MB/s eta 0:00:00
+#10 23.55 Downloading orjson-3.10.18-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (136 kB)
+#10 23.58    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 137.0/137.0 kB 4.8 MB/s eta 0:00:00
+#10 23.59 Downloading python_multipart-0.0.20-py3-none-any.whl (24 kB)
+#10 23.61 Downloading aiofiles-24.1.0-py3-none-any.whl (15 kB)
+#10 23.63 Downloading gitingest-0.1.4-py3-none-any.whl (40 kB)
+#10 23.64    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 40.8/40.8 kB 8.7 MB/s eta 0:00:00
+#10 23.65 Downloading aiohappyeyeballs-2.6.1-py3-none-any.whl (15 kB)
+#10 23.68 Downloading aiosignal-1.3.2-py2.py3-none-any.whl (7.6 kB)
+#10 23.69 Downloading annotated_types-0.7.0-py3-none-any.whl (13 kB)
+#10 23.71 Downloading anyio-4.9.0-py3-none-any.whl (100 kB)
+#10 23.73    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100.9/100.9 kB 6.3 MB/s eta 0:00:00
+#10 23.74 Downloading async_timeout-4.0.3-py3-none-any.whl (5.7 kB)
+#10 23.76 Downloading attrs-25.3.0-py3-none-any.whl (63 kB)
+#10 23.78    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 63.8/63.8 kB 2.9 MB/s eta 0:00:00
+#10 23.80 Downloading click-8.2.1-py3-none-any.whl (102 kB)
+#10 23.82    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 102.2/102.2 kB 5.7 MB/s eta 0:00:00
+#10 23.83 Downloading contourpy-1.3.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (313 kB)
+#10 23.90    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 313.1/313.1 kB 4.8 MB/s eta 0:00:00
+#10 23.91 Downloading cycler-0.12.1-py3-none-any.whl (8.3 kB)
+#10 23.94 Downloading distro-1.9.0-py3-none-any.whl (20 kB)
+#10 23.96 Downloading fonttools-4.58.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (4.9 MB)
+#10 24.93    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.9/4.9 MB 5.1 MB/s eta 0:00:00
+#10 24.94 Downloading frozenlist-1.6.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (237 kB)
+#10 24.98    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 237.2/237.2 kB 5.9 MB/s eta 0:00:00
+#10 25.02 Downloading greenlet-3.2.3-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl (630 kB)
+#10 25.26    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 630.4/630.4 kB 2.6 MB/s eta 0:00:00
+#10 25.33 Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+#10 25.36 Downloading hiredis-3.2.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (169 kB)
+#10 25.39    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 169.6/169.6 kB 7.0 MB/s eta 0:00:00
+#10 25.41 Downloading httpx_sse-0.4.0-py3-none-any.whl (7.8 kB)
+#10 25.43 Downloading idna-3.10-py3-none-any.whl (70 kB)
+#10 25.44    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 70.4/70.4 kB 10.2 MB/s eta 0:00:00
+#10 25.46 Downloading jiter-0.10.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (345 kB)
+#10 25.53    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 345.6/345.6 kB 5.4 MB/s eta 0:00:00
+#10 25.55 Downloading kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (1.4 MB)
+#10 25.84    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.4/1.4 MB 4.9 MB/s eta 0:00:00
+#10 25.86 Downloading multidict-6.4.4-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (226 kB)
+#10 25.90    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 226.7/226.7 kB 5.8 MB/s eta 0:00:00
+#10 25.91 Downloading packaging-25.0-py3-none-any.whl (66 kB)
+#10 25.93    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 66.5/66.5 kB 4.4 MB/s eta 0:00:00
+#10 25.95 Downloading pillow-11.2.1-cp311-cp311-manylinux_2_28_aarch64.whl (4.5 MB)
+#10 26.97    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.5/4.5 MB 4.4 MB/s eta 0:00:00
+#10 26.99 Downloading propcache-0.3.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (233 kB)
+#10 27.03    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 233.6/233.6 kB 5.7 MB/s eta 0:00:00
+#10 27.05 Downloading psycopg2_binary-2.9.10-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (2.9 MB)
+#10 27.68    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.9/2.9 MB 4.5 MB/s eta 0:00:00
+#10 27.70 Downloading PyMySQL-1.1.1-py3-none-any.whl (44 kB)
+#10 27.71    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 45.0/45.0 kB 7.6 MB/s eta 0:00:00
+#10 27.72 Downloading pyparsing-3.2.3-py3-none-any.whl (111 kB)
+#10 27.74    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 111.1/111.1 kB 6.9 MB/s eta 0:00:00
+#10 27.75 Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+#10 27.80    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 229.9/229.9 kB 4.7 MB/s eta 0:00:00
+#10 27.82 Downloading pytz-2025.2-py2.py3-none-any.whl (509 kB)
+#10 27.91    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 509.2/509.2 kB 5.3 MB/s eta 0:00:00
+#10 27.93 Downloading requests-2.32.3-py3-none-any.whl (64 kB)
+#10 27.94    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 64.9/64.9 kB 8.2 MB/s eta 0:00:00
+#10 27.95 Downloading certifi-2025.4.26-py3-none-any.whl (159 kB)
+#10 27.99    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 159.6/159.6 kB 4.1 MB/s eta 0:00:00
+#10 28.01 Downloading sniffio-1.3.1-py3-none-any.whl (10 kB)
+#10 28.02 Downloading sse_starlette-2.3.6-py3-none-any.whl (10 kB)
+#10 28.04 Downloading tqdm-4.67.1-py3-none-any.whl (78 kB)
+#10 28.05    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 78.5/78.5 kB 39.7 MB/s eta 0:00:00
+#10 28.06 Downloading typing_extensions-4.14.0-py3-none-any.whl (43 kB)
+#10 28.09    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 43.8/43.8 kB 1.8 MB/s eta 0:00:00
+#10 28.10 Downloading typing_inspection-0.4.1-py3-none-any.whl (14 kB)
+#10 28.11 Downloading tzdata-2025.2-py2.py3-none-any.whl (347 kB)
+#10 28.19    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 347.8/347.8 kB 4.8 MB/s eta 0:00:00
+#10 28.20 Downloading urllib3-2.4.0-py3-none-any.whl (128 kB)
+#10 28.23    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 128.7/128.7 kB 5.6 MB/s eta 0:00:00
+#10 28.24 Downloading yarl-1.20.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (355 kB)
+#10 28.31    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 355.8/355.8 kB 5.2 MB/s eta 0:00:00
+#10 28.32 Downloading docstring_parser-0.16-py3-none-any.whl (36 kB)
+#10 28.34 Downloading GitPython-3.1.44-py3-none-any.whl (207 kB)
+#10 28.39    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 207.6/207.6 kB 4.5 MB/s eta 0:00:00
+#10 28.40 Downloading PyYAML-6.0.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (736 kB)
+#10 28.57    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 736.8/736.8 kB 4.4 MB/s eta 0:00:00
+#10 28.59 Downloading redis-6.2.0-py3-none-any.whl (278 kB)
+#10 28.63    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 278.7/278.7 kB 6.8 MB/s eta 0:00:00
+#10 28.65 Downloading rich-14.0.0-py3-none-any.whl (243 kB)
+#10 28.70    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 243.2/243.2 kB 4.9 MB/s eta 0:00:00
+#10 28.71 Downloading tiktoken-0.9.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (1.1 MB)
+#10 28.95    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.1/1.1 MB 5.0 MB/s eta 0:00:00
+#10 28.96 Downloading tomli-2.2.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (226 kB)
+#10 29.00    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 226.1/226.1 kB 5.4 MB/s eta 0:00:00
+#10 29.02 Downloading typer-0.16.0-py3-none-any.whl (46 kB)
+#10 29.03    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 46.3/46.3 kB 9.2 MB/s eta 0:00:00
+#10 29.04 Downloading charset_normalizer-3.4.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (142 kB)
+#10 29.07    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 142.8/142.8 kB 6.2 MB/s eta 0:00:00
+#10 29.08 Downloading gitdb-4.0.12-py3-none-any.whl (62 kB)
+#10 29.09    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 62.8/62.8 kB 6.5 MB/s eta 0:00:00
+#10 29.12 Downloading markdown_it_py-3.0.0-py3-none-any.whl (87 kB)
+#10 29.14    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 87.5/87.5 kB 4.7 MB/s eta 0:00:00
+#10 29.16 Downloading pygments-2.19.1-py3-none-any.whl (1.2 MB)
+#10 29.39    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 5.2 MB/s eta 0:00:00
+#10 29.41 Downloading regex-2024.11.6-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (792 kB)
+#10 29.55    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 792.1/792.1 kB 5.8 MB/s eta 0:00:00
+#10 29.58 Downloading shellingham-1.5.4-py2.py3-none-any.whl (9.8 kB)
+#10 29.60 Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+#10 29.62 Downloading mdurl-0.1.2-py3-none-any.whl (10.0 kB)
+#10 29.66 Downloading smmap-5.0.2-py3-none-any.whl (24 kB)
+#10 30.29 Installing collected packages: pytz, yt-dlp, websockets, urllib3, ujson, tzdata, typing-extensions, tqdm, tomli, sniffio, smmap, six, shellingham, regex, redis, pyyaml, python-multipart, python-dotenv, pyparsing, PyMySQL, pygments, psycopg2-binary, propcache, pillow, packaging, orjson, numpy, multidict, mdurl, kiwisolver, jiter, idna, httpx-sse, hiredis, h11, greenlet, frozenlist, fonttools, docstring-parser, distro, cycler, click, charset-normalizer, certifi, attrs, async-timeout, annotated-types, aiohappyeyeballs, aiofiles, yarl, uvicorn, typing-inspection, sqlalchemy, requests, python-dateutil, pydantic-core, markdown-it-py, httpcore, gitdb, contourpy, anyio, aiosqlite, aiosignal, aiopg, aiomysql, tiktoken, starlette, sse-starlette, rich, pydantic, pandas, matplotlib, httpx, gitpython, docker, aiohttp, typer, pydantic-settings, openai, gitingest, fastapi, mcp, agno
+#10 52.27 Successfully installed PyMySQL-1.1.1 agno-1.5.9 aiofiles-24.1.0 aiohappyeyeballs-2.6.1 aiohttp-3.12.9 aiomysql-0.2.0 aiopg-1.4.0 aiosignal-1.3.2 aiosqlite-0.21.0 annotated-types-0.7.0 anyio-4.9.0 async-timeout-4.0.3 attrs-25.3.0 certifi-2025.4.26 charset-normalizer-3.4.2 click-8.2.1 contourpy-1.3.2 cycler-0.12.1 distro-1.9.0 docker-7.1.0 docstring-parser-0.16 fastapi-0.115.12 fonttools-4.58.1 frozenlist-1.6.2 gitdb-4.0.12 gitingest-0.1.4 gitpython-3.1.44 greenlet-3.2.3 h11-0.16.0 hiredis-3.2.1 httpcore-1.0.9 httpx-0.28.1 httpx-sse-0.4.0 idna-3.10 jiter-0.10.0 kiwisolver-1.4.8 markdown-it-py-3.0.0 matplotlib-3.10.3 mcp-1.9.3 mdurl-0.1.2 multidict-6.4.4 numpy-2.2.6 openai-1.84.0 orjson-3.10.18 packaging-25.0 pandas-2.3.0 pillow-11.2.1 propcache-0.3.1 psycopg2-binary-2.9.10 pydantic-2.11.5 pydantic-core-2.33.2 pydantic-settings-2.9.1 pygments-2.19.1 pyparsing-3.2.3 python-dateutil-2.9.0.post0 python-dotenv-1.1.0 python-multipart-0.0.20 pytz-2025.2 pyyaml-6.0.2 redis-6.2.0 regex-2024.11.6 requests-2.32.3 rich-14.0.0 shellingham-1.5.4 six-1.17.0 smmap-5.0.2 sniffio-1.3.1 sqlalchemy-2.0.41 sse-starlette-2.3.6 starlette-0.46.2 tiktoken-0.9.0 tomli-2.2.1 tqdm-4.67.1 typer-0.16.0 typing-extensions-4.14.0 typing-inspection-0.4.1 tzdata-2025.2 ujson-5.10.0 urllib3-2.4.0 uvicorn-0.34.3 websockets-15.0.1 yarl-1.20.0 yt-dlp-2025.4.30
+#10 52.27 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+#10 52.47 
+#10 52.47 [notice] A new release of pip is available: 24.0 -> 25.1.1
+#10 52.47 [notice] To update, run: pip install --upgrade pip
+#10 DONE 55.6s
+
+#11 [backend 7/8] RUN mkdir -p data logs uploads     && chmod -R 777 logs data uploads
+#11 DONE 0.3s
+
+#12 [backend 8/8] COPY backend/ ./backend/
+#12 DONE 0.1s
+
+#13 [backend] exporting to image
+#13 exporting layers
+#13 exporting layers 2.1s done
+#13 writing image sha256:6b9d826acc8b1bc5c4ba6a8ae93db15ac22b900d6a43dcdb26f186ab691e1cb7 done
+#13 naming to docker.io/library/sherlog-canvas-backend done
+#13 DONE 2.1s
+
+#14 [backend] resolving provenance for metadata file
+#14 DONE 0.0s
+
+#15 [frontend internal] load build definition from Dockerfile
+#15 transferring dockerfile: 1.36kB 0.0s done
+#15 DONE 0.0s
+
+#16 [frontend internal] load metadata for docker.io/library/node:20-slim
+#16 DONE 0.9s
+
+#17 [frontend internal] load .dockerignore
+#17 transferring context: 215B done
+#17 DONE 0.0s
+
+#18 [frontend base 1/3] FROM docker.io/library/node:20-slim@sha256:cb4abfbba7dfaa78e21ddf2a72a592e5f9ed36ccf98bdc8ad3ff945673d288c2
+#18 DONE 0.0s
+
+#19 [frontend internal] load build context
+#19 transferring context: 599.28kB 0.2s done
+#19 DONE 0.2s
+
+#20 [frontend base 2/3] WORKDIR /app
+#20 CACHED
+
+#21 [frontend base 3/3] RUN npm install -g pnpm
+#21 CACHED
+
+#22 [frontend deps 1/3] WORKDIR /app
+#22 CACHED
+
+#23 [frontend deps 2/3] COPY package.json pnpm-lock.yaml* ./
+#23 DONE 0.1s
+
+#24 [frontend deps 3/3] RUN pnpm install --frozen-lockfile
+#24 1.057 Lockfile is up to date, resolution step is skipped
+#24 1.189 Progress: resolved 1, reused 0, downloaded 0, added 0
+#24 1.369 Packages: +1012
+#24 1.369 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#24 2.190 Progress: resolved 1012, reused 0, downloaded 21, added 20
+#24 3.192 Progress: resolved 1012, reused 0, downloaded 108, added 108
+#24 4.192 Progress: resolved 1012, reused 0, downloaded 151, added 151
+#24 5.192 Progress: resolved 1012, reused 0, downloaded 206, added 207
+#24 6.193 Progress: resolved 1012, reused 0, downloaded 268, added 269
+#24 7.194 Progress: resolved 1012, reused 0, downloaded 285, added 286
+#24 8.195 Progress: resolved 1012, reused 0, downloaded 307, added 308
+#24 9.197 Progress: resolved 1012, reused 0, downloaded 376, added 376
+#24 10.20 Progress: resolved 1012, reused 0, downloaded 408, added 409
+#24 11.20 Progress: resolved 1012, reused 0, downloaded 431, added 432
+#24 12.20 Progress: resolved 1012, reused 0, downloaded 460, added 461
+#24 13.20 Progress: resolved 1012, reused 0, downloaded 511, added 512
+#24 14.20 Progress: resolved 1012, reused 0, downloaded 545, added 546
+#24 15.20 Progress: resolved 1012, reused 0, downloaded 597, added 597
+#24 16.21 Progress: resolved 1012, reused 0, downloaded 641, added 642
+#24 17.21 Progress: resolved 1012, reused 0, downloaded 653, added 654
+#24 18.21 Progress: resolved 1012, reused 0, downloaded 663, added 663
+#24 19.21 Progress: resolved 1012, reused 0, downloaded 706, added 707
+#24 20.21 Progress: resolved 1012, reused 0, downloaded 742, added 742
+#24 21.21 Progress: resolved 1012, reused 0, downloaded 801, added 802
+#24 22.21 Progress: resolved 1012, reused 0, downloaded 878, added 879
+#24 23.21 Progress: resolved 1012, reused 0, downloaded 936, added 936
+#24 24.21 Progress: resolved 1012, reused 0, downloaded 976, added 977
+#24 25.21 Progress: resolved 1012, reused 0, downloaded 1001, added 1002
+#24 26.21 Progress: resolved 1012, reused 0, downloaded 1003, added 1004
+#24 27.21 Progress: resolved 1012, reused 0, downloaded 1004, added 1005
+#24 28.84 Progress: resolved 1012, reused 0, downloaded 1005, added 1005
+#24 29.84 Progress: resolved 1012, reused 0, downloaded 1007, added 1008
+#24 37.10 Progress: resolved 1012, reused 0, downloaded 1008, added 1008
+#24 38.10 Progress: resolved 1012, reused 0, downloaded 1009, added 1010
+#24 43.48 Progress: resolved 1012, reused 0, downloaded 1010, added 1010
+#24 44.48 Progress: resolved 1012, reused 0, downloaded 1010, added 1011
+#24 49.34 Progress: resolved 1012, reused 0, downloaded 1011, added 1011
+#24 49.37 Progress: resolved 1012, reused 0, downloaded 1011, added 1012, done
+#24 50.14 
+#24 50.14 dependencies:
+#24 50.14 + @codemirror/autocomplete 6.18.6
+#24 50.14 + @codemirror/commands 6.8.1
+#24 50.14 + @codemirror/lang-javascript 6.2.3
+#24 50.14 + @codemirror/lang-markdown 6.3.2
+#24 50.14 + @codemirror/lang-python 6.2.0
+#24 50.14 + @codemirror/lang-sql 6.8.0
+#24 50.14 + @codemirror/state 6.5.2
+#24 50.14 + @codemirror/view 6.36.6
+#24 50.14 + @hookform/resolvers 3.10.0
+#24 50.14 + @monaco-editor/react 4.7.0
+#24 50.14 + @radix-ui/react-accordion 1.2.2
+#24 50.14 + @radix-ui/react-alert-dialog 1.1.4
+#24 50.14 + @radix-ui/react-aspect-ratio 1.1.1
+#24 50.14 + @radix-ui/react-avatar 1.1.2
+#24 50.14 + @radix-ui/react-checkbox 1.1.3
+#24 50.14 + @radix-ui/react-collapsible 1.1.2
+#24 50.14 + @radix-ui/react-context-menu 2.2.4
+#24 50.14 + @radix-ui/react-dialog 1.1.4
+#24 50.14 + @radix-ui/react-dropdown-menu 2.1.12
+#24 50.14 + @radix-ui/react-hover-card 1.1.4
+#24 50.14 + @radix-ui/react-icons 1.3.2
+#24 50.14 + @radix-ui/react-label 2.1.1
+#24 50.14 + @radix-ui/react-menubar 1.1.4
+#24 50.14 + @radix-ui/react-navigation-menu 1.2.3
+#24 50.14 + @radix-ui/react-popover 1.1.4
+#24 50.14 + @radix-ui/react-progress 1.1.1
+#24 50.14 + @radix-ui/react-radio-group 1.2.2
+#24 50.14 + @radix-ui/react-scroll-area 1.2.6
+#24 50.14 + @radix-ui/react-select 2.1.4
+#24 50.14 + @radix-ui/react-separator 1.1.1
+#24 50.14 + @radix-ui/react-slider 1.2.2
+#24 50.14 + @radix-ui/react-slot 1.2.0
+#24 50.14 + @radix-ui/react-switch 1.1.2
+#24 50.14 + @radix-ui/react-tabs 1.1.2
+#24 50.14 + @radix-ui/react-toast 1.2.4
+#24 50.14 + @radix-ui/react-toggle 1.1.1
+#24 50.14 + @radix-ui/react-toggle-group 1.1.1
+#24 50.14 + @radix-ui/react-tooltip 1.1.6
+#24 50.14 + @tanstack/react-table 8.21.3
+#24 50.14 + @tremor/react 3.18.7
+#24 50.14 + @uiw/codemirror-theme-github 4.23.12
+#24 50.14 + @uiw/react-codemirror 4.23.12
+#24 50.14 + ai 4.3.10
+#24 50.14 + autoprefixer 10.4.21
+#24 50.14 + axios 1.9.0
+#24 50.14 + class-variance-authority 0.7.1
+#24 50.14 + clsx 2.1.1
+#24 50.14 + cmdk 1.0.4
+#24 50.14 + codemirror 6.0.1
+#24 50.14 + date-fns 4.1.0
+#24 50.14 + embla-carousel-react 8.5.1
+#24 50.14 + immer 10.1.1
+#24 50.14 + input-otp 1.4.1
+#24 50.14 + lucide-react 0.454.0
+#24 50.14 + monaco-editor 0.52.2
+#24 50.14 + next 15.2.4
+#24 50.14 + next-themes 0.4.6
+#24 50.14 + papaparse 5.5.2
+#24 50.14 + react 19.1.0
+#24 50.14 + react-day-picker 8.10.1
+#24 50.14 + react-dom 19.1.0
+#24 50.14 + react-hook-form 7.56.1
+#24 50.14 + react-markdown 10.1.0
+#24 50.14 + react-resizable-panels 2.1.8
+#24 50.14 + react-router-dom 7.5.2
+#24 50.14 + react-syntax-highlighter 15.6.1
+#24 50.14 + recharts 2.15.0
+#24 50.14 + remark-gfm 4.0.1
+#24 50.14 + sonner 1.7.4
+#24 50.14 + tailwind-merge 2.6.0
+#24 50.14 + tailwindcss-animate 1.0.7
+#24 50.14 + use-sync-external-store 1.5.0
+#24 50.14 + uuid 11.1.0
+#24 50.14 + vaul 0.9.9
+#24 50.14 + zod 3.24.3
+#24 50.14 + zustand 5.0.3
+#24 50.14 
+#24 50.14 devDependencies:
+#24 50.14 + @tailwindcss/typography 0.5.16
+#24 50.14 + @testing-library/jest-dom 6.6.3
+#24 50.14 + @testing-library/react 16.3.0
+#24 50.14 + @testing-library/user-event 14.6.1
+#24 50.14 + @types/jest 29.5.14
+#24 50.14 + @types/node 22.15.2
+#24 50.14 + @types/papaparse 5.3.15
+#24 50.14 + @types/react 19.1.2
+#24 50.14 + @types/react-dom 19.1.2
+#24 50.14 + @types/uuid 10.0.0
+#24 50.14 + eslint 9.28.0
+#24 50.14 + eslint-config-next 15.3.3
+#24 50.14 + jest 29.7.0
+#24 50.14 + jest-environment-jsdom 29.7.0
+#24 50.14 + postcss 8.5.3
+#24 50.14 + tailwindcss 3.4.17
+#24 50.14 + ts-jest 29.3.2
+#24 50.14 + typescript 5.8.3
+#24 50.14 
+#24 50.14 ╭ Warning ─────────────────────────────────────────────────────────────────────╮
+#24 50.14 │                                                                              │
+#24 50.14 │   Ignored build scripts: sharp, unrs-resolver.                               │
+#24 50.14 │   Run "pnpm approve-builds" to pick which dependencies should be allowed     │
+#24 50.14 │   to run scripts.                                                            │
+#24 50.14 │                                                                              │
+#24 50.14 ╰──────────────────────────────────────────────────────────────────────────────╯
+#24 50.14 
+#24 50.28 Done in 49.9s using pnpm v10.11.1
+#24 DONE 52.3s
+
+#25 [frontend builder 2/4] COPY --from=deps /app/node_modules ./node_modules
+#25 DONE 8.8s
+
+#26 [frontend builder 3/4] COPY . .
+#26 DONE 0.1s
+
+#27 [frontend builder 4/4] RUN pnpm build
+#27 0.585 
+#27 0.585 > my-v0-project@0.1.0 build /app
+#27 0.585 > next build
+#27 0.585 
+#27 1.096 Attention: Next.js now collects completely anonymous telemetry regarding usage.
+#27 1.096 This information is used to shape Next.js' roadmap and prioritize features.
+#27 1.096 You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+#27 1.096 https://nextjs.org/telemetry
+#27 1.096 
+#27 1.145    ▲ Next.js 15.2.4
+#27 1.145 
+#27 1.206    Creating an optimized production build ...
+#27 23.76  ✓ Compiled successfully
+#27 23.76    Skipping validation of types
+#27 23.76    Skipping linting
+#27 24.02    Collecting page data ...
+#27 25.52    Generating static pages (0/6) ...
+#27 26.06    Generating static pages (1/6) 
+#27 26.06    Generating static pages (2/6) 
+#27 26.06    Generating static pages (4/6) 
+#27 26.06  ✓ Generating static pages (6/6)
+#27 26.42    Finalizing page optimization ...
+#27 26.42    Collecting build traces ...
+#27 45.30 
+#27 45.30 Route (app)                                 Size  First Load JS
+#27 45.30 ┌ ○ /                                      485 B         102 kB
+#27 45.30 ├ ○ /_not-found                            982 B         103 kB
+#27 45.30 ├ ƒ /canvas/[id]                         15.5 kB         165 kB
+#27 45.30 ├ ○ /canvases                            9.94 kB         180 kB
+#27 45.30 └ ○ /view-csv                              37 kB         177 kB
+#27 45.30 + First Load JS shared by all             102 kB
+#27 45.30   ├ chunks/29220211-4d73ccf098f8683b.js  53.3 kB
+#27 45.30   ├ chunks/35-7f2fba11b1214ba1.js        46.1 kB
+#27 45.30   └ other shared chunks (total)          2.27 kB
+#27 45.30 
+#27 45.30 
+#27 45.30 ○  (Static)   prerendered as static content
+#27 45.30 ƒ  (Dynamic)  server-rendered on demand
+#27 45.30 
+#27 DONE 46.0s
+
+#28 [frontend runner 2/4] COPY --from=builder /app/public ./public
+#28 CACHED
+
+#29 [frontend runner 3/4] COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+#29 DONE 0.5s
+
+#30 [frontend runner 4/4] COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+#30 DONE 0.0s
+
+#31 [frontend] exporting to image
+#31 exporting layers
+#31 exporting layers 0.2s done
+#31 writing image sha256:2e75d1a1a1e94f41d653d18cbc7c7ea006b662b7a16cf1d5a91582d8f572a010 done
+#31 naming to docker.io/library/sherlog-canvas-frontend done
+#31 DONE 0.2s
+
+#32 [frontend] resolving provenance for metadata file
+#32 DONE 0.0s
++ echo 'Starting containers...'
+Starting containers...
++ docker-compose up -d --force-recreate
+ Network sherlog-canvas_default  Creating
+ Network sherlog-canvas_default  Created
+ Container sherlog-canvas-redis  Creating
+ Container sherlog-canvas-redis  Created
+ Container sherlog-canvas-backend  Creating
+ Container sherlog-canvas-backend  Created
+ Container sherlog-canvas-frontend  Creating
+ Container sherlog-canvas-frontend  Created
+ Container sherlog-canvas-redis  Starting
+ Container sherlog-canvas-redis  Started
+ Container sherlog-canvas-redis  Waiting
+ Container sherlog-canvas-redis  Healthy
+ Container sherlog-canvas-backend  Starting
+ Container sherlog-canvas-backend  Started
+ Container sherlog-canvas-backend  Waiting
+ Container sherlog-canvas-backend  Healthy
+ Container sherlog-canvas-frontend  Starting
+ Container sherlog-canvas-frontend  Started
++ echo 'Services started. Status:'
+Services started. Status:
++ docker-compose ps
+NAME                      IMAGE                     COMMAND                  SERVICE    CREATED          STATUS                    PORTS
+sherlog-canvas-backend    sherlog-canvas-backend    "python -m uvicorn b…"   backend    42 seconds ago   Up 31 seconds (healthy)   0.0.0.0:9091->8000/tcp, 0.0.0.0:9092->8100/tcp
+sherlog-canvas-frontend   sherlog-canvas-frontend   "docker-entrypoint.s…"   frontend   41 seconds ago   Up Less than a second     0.0.0.0:3000->3000/tcp
+sherlog-canvas-redis      redis:7-alpine            "docker-entrypoint.s…"   redis      42 seconds ago   Up 41 seconds (healthy)   0.0.0.0:6379->6379/tcp
++ echo 'Sherlog Canvas is now running!'
+Sherlog Canvas is now running!
++ echo 'Backend API: http://localhost:9091/api'
+Backend API: http://localhost:9091/api
++ echo 'Frontend UI: http://localhost:3000'
+Frontend UI: http://localhost:3000
++ echo ''
+
++ echo 'To stop all services, run:'
+To stop all services, run:
++ echo 'docker-compose down'
+docker-compose down
++ echo ''
+
++ echo 'To view logs, run:'
+To view logs, run:
++ echo 'docker-compose logs -f'
+docker-compose logs -f

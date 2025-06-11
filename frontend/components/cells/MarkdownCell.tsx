@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import type { Cell } from "../../store/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
@@ -24,13 +24,13 @@ const MarkdownCell: React.FC<MarkdownCellProps> = ({ cell, onUpdate, onDelete })
   const [content, setContent] = useState(cell.content)
   const containerRef = useRef<HTMLDivElement>(null); // Ref for click-outside detection
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     if (content !== cell.content) {
       onUpdate(cell.id, content)
     }
     setIsEditing(false)
     // onExecute(cell.id) // Removed execution on save for markdown
-  }
+  }, [content, cell.content, cell.id, onUpdate])
 
   const handleCancel = () => {
     setContent(cell.content)
@@ -54,7 +54,7 @@ const MarkdownCell: React.FC<MarkdownCellProps> = ({ cell, onUpdate, onDelete })
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isEditing, containerRef, content, cell.content, handleSave]); // Add dependencies
+  }, [isEditing, handleSave]); // Add dependencies
 
 
   return (

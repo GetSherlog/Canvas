@@ -8,7 +8,7 @@ interface FileSystemConnectionFormProps {
   config: {
     allowed_directories?: string[]
   }
-  onConfigChange: (field: string, value: any) => void
+  onConfigChange: (field: string, value: string | string[]) => void
 }
 
 const FileSystemConnectionForm: React.FC<FileSystemConnectionFormProps> = ({ config, onConfigChange }) => {

@@ -2,7 +2,7 @@
 Connection Handler Registry
 """
 
-from typing import Dict, Type, List
+from typing import Dict, List
 import logging
 
 from .base import MCPConnectionHandler

@@ -6,11 +6,11 @@ import type { Cell, CellType } from '../../../store/types' // Adjusted path
 // Mock next/dynamic
 jest.mock('next/dynamic', () => ({
   __esModule: true,
-  default: (loader: () => Promise<any>) => {
+  default: (loader: () => Promise<{ default: React.ComponentType<unknown> }>) => {
     // In a test environment, we can resolve the dynamic import immediately
     // or return a mock. For simplicity, let's try to load it.
     // This might still require the loader to be a function that returns a module with a default export.
-    let LoadedComponent: React.ComponentType<any> | null = null;
+    let LoadedComponent: React.ComponentType<unknown> | null = null;
     try {
       // This is a bit of a hack and might not always work depending on how Jest handles the import()
       // A more robust solution might involve specific mocks for each dynamic component path.
@@ -20,11 +20,11 @@ jest.mock('next/dynamic', () => ({
       }).catch(() => {
         // Fallback or error
       });
-    } catch (e) {
+    } catch {
       // Fallback
     }
     // Return a component that tries to render the loaded one, or a placeholder
-    return (props: any) => {
+    return (props: unknown) => {
       if (LoadedComponent) {
         return <LoadedComponent {...props} />;
       }
@@ -39,35 +39,15 @@ jest.mock('next/dynamic', () => ({
 // Mock individual cell components
 // It's better to import the mocked components to access their .mock property
 import MarkdownCellMock from '../MarkdownCell';
-import GitHubCellMock from '../GitHubCell';
-import SummarizationCellMock from '../SummarizationCell';
-import InvestigationReportCellMock from '../InvestigationReportCell';
-import FileSystemCellMock from '../FileSystemCell';
-import PythonCellMock from '../PythonCell';
+import ToolCellMock from '../ToolCell';
 
 jest.mock('../MarkdownCell', () => ({
   __esModule: true,
   default: jest.fn((props) => <div data-testid="markdown-cell" data-props={JSON.stringify(props)} />),
 }));
-jest.mock('../GitHubCell', () => ({
+jest.mock('../ToolCell', () => ({
   __esModule: true,
-  default: jest.fn((props) => <div data-testid="github-cell" data-props={JSON.stringify(props)} />),
-}));
-jest.mock('../SummarizationCell', () => ({
-  __esModule: true,
-  default: jest.fn((props) => <div data-testid="summarization-cell" data-props={JSON.stringify(props)} />),
-}));
-jest.mock('../InvestigationReportCell', () => ({
-  __esModule: true,
-  default: jest.fn((props) => <div data-testid="investigation-report-cell" data-props={JSON.stringify(props)} />),
-}));
-jest.mock('../FileSystemCell', () => ({
-  __esModule: true,
-  default: jest.fn((props) => <div data-testid="filesystem-cell" data-props={JSON.stringify(props)} />),
-}));
-jest.mock('../PythonCell', () => ({
-  __esModule: true,
-  default: jest.fn((props) => <div data-testid="python-cell" data-props={JSON.stringify(props)} />),
+  default: jest.fn((props) => <div data-testid="tool-cell" data-props={JSON.stringify(props)} />),
 }));
 
 
@@ -107,11 +87,23 @@ describe('CellFactory', () => {
     expect(receivedProps.onDelete).toBe(mockOnDelete);
   })
 
-  it('renders GitHubCell for "github" type', () => {
+  it('renders ToolCell for "tool" type', () => {
+    const cell = createCell('tool')
+    render(<CellFactory cell={cell} {...baseCellProps} />)
+    expect(screen.getByTestId('tool-cell')).toBeInTheDocument();
+    const receivedProps = (ToolCellMock as unknown as jest.Mock).mock.calls[0][0];
+    expect(receivedProps.cell).toEqual(cell);
+    expect(receivedProps.onExecute).toBe(mockOnExecute);
+    expect(receivedProps.onUpdate).toBe(mockOnUpdate);
+    expect(receivedProps.onDelete).toBe(mockOnDelete);
+    expect(receivedProps.isExecuting).toBe(false);
+  })
+
+  it('renders ToolCell for legacy "github" type', () => {
     const cell = createCell('github')
     render(<CellFactory cell={cell} {...baseCellProps} />)
-    expect(screen.getByTestId('github-cell')).toBeInTheDocument();
-    const receivedProps = (GitHubCellMock as unknown as jest.Mock).mock.calls[0][0];
+    expect(screen.getByTestId('tool-cell')).toBeInTheDocument();
+    const receivedProps = (ToolCellMock as unknown as jest.Mock).mock.calls[0][0];
     expect(receivedProps.cell).toEqual(cell);
     expect(receivedProps.onExecute).toBe(mockOnExecute);
     expect(receivedProps.onUpdate).toBe(mockOnUpdate);
@@ -119,45 +111,11 @@ describe('CellFactory', () => {
     expect(receivedProps.isExecuting).toBe(false);
   })
 
-  it('renders SummarizationCell for "summarization" type', () => {
-    const cell = createCell('summarization')
-    render(<CellFactory cell={cell} {...baseCellProps} />)
-    expect(screen.getByTestId('summarization-cell')).toBeInTheDocument();
-    const receivedProps = (SummarizationCellMock as unknown as jest.Mock).mock.calls[0][0];
-    expect(receivedProps.cell).toEqual(cell);
-    expect(receivedProps.onDelete).toBe(mockOnDelete);
-    expect(receivedProps.onExecute).toBeUndefined();
-    expect(receivedProps.onUpdate).toBeUndefined();
-  })
-
-  it('renders InvestigationReportCell for "investigation_report" type', () => {
-    const cell = createCell('investigation_report')
-    render(<CellFactory cell={cell} {...baseCellProps} />)
-    expect(screen.getByTestId('investigation-report-cell')).toBeInTheDocument();
-    const receivedProps = (InvestigationReportCellMock as unknown as jest.Mock).mock.calls[0][0];
-    expect(receivedProps.cell).toEqual(cell);
-    expect(receivedProps.onDelete).toBe(mockOnDelete);
-    expect(receivedProps.onExecute).toBeUndefined();
-    expect(receivedProps.onUpdate).toBeUndefined();
-  })
-
-  it('renders FileSystemCell for "filesystem" type', () => {
-    const cell = createCell('filesystem')
-    render(<CellFactory cell={cell} {...baseCellProps} />)
-    expect(screen.getByTestId('filesystem-cell')).toBeInTheDocument();
-    const receivedProps = (FileSystemCellMock as unknown as jest.Mock).mock.calls[0][0];
-    expect(receivedProps.cell).toEqual(cell);
-    expect(receivedProps.onUpdate).toBe(mockOnUpdate);
-    expect(receivedProps.onExecute).toBe(mockOnExecute);
-    expect(receivedProps.onDelete).toBe(mockOnDelete);
-    expect(receivedProps.isExecuting).toBe(false);
-  })
-
-  it('renders PythonCell for "python" type', () => {
+  it('renders ToolCell for legacy "python" type', () => {
     const cell = createCell('python')
     render(<CellFactory cell={cell} {...baseCellProps} />)
-    expect(screen.getByTestId('python-cell')).toBeInTheDocument();
-    const receivedProps = (PythonCellMock as unknown as jest.Mock).mock.calls[0][0];
+    expect(screen.getByTestId('tool-cell')).toBeInTheDocument();
+    const receivedProps = (ToolCellMock as unknown as jest.Mock).mock.calls[0][0];
     expect(receivedProps.cell).toEqual(cell);
     expect(receivedProps.onExecute).toBe(mockOnExecute);
     expect(receivedProps.onUpdate).toBe(mockOnUpdate);
@@ -165,12 +123,13 @@ describe('CellFactory', () => {
     expect(receivedProps.isExecuting).toBe(false);
   })
 
-  it('renders unknown cell type message for an unsupported type', () => {
+  it('renders ToolCell for any unknown type (mapped to tool)', () => {
     // Cast to any to bypass type checking for this specific test case
-    const cell = createCell('unknown_type' as any)
+    const cell = createCell('unknown_type' as CellType)
     render(<CellFactory cell={cell} {...baseCellProps} />)
-    expect(screen.getByText(/Unknown or unsupported cell type: unknown_type/i)).toBeInTheDocument()
-    // Check if the cell data is stringified in the output
-    expect(screen.getByText(/"id": "cell-unknown_type"/)).toBeInTheDocument();
+    // Unknown types are mapped to tool cells
+    expect(screen.getByTestId('tool-cell')).toBeInTheDocument();
+    const receivedProps = (ToolCellMock as unknown as jest.Mock).mock.calls[0][0];
+    expect(receivedProps.cell).toEqual(cell);
   })
 })

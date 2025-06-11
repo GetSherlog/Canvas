@@ -3,7 +3,6 @@ Media Analysis Workflow using Agno
 Converts the media URL extraction, analysis, and code correlation process into a structured workflow.
 """
 import logging
-import re
 import asyncio
 from typing import Iterator, List, Optional, Dict, Any
 from datetime import datetime
@@ -279,7 +278,7 @@ class MediaAnalysisWorkflow(Workflow):
             return
         
         yield RunResponse(
-            content=f"✅ **Media Analysis Complete:**\n\n" +
+            content="✅ **Media Analysis Complete:**\n\n" +
                    f"**Hypothesis:** {media_analysis.hypothesis}\n\n" +
                    f"**Timeline Events:** {len(media_analysis.timeline_events)}\n\n" +
                    f"**Summary:** {media_analysis.summary}"

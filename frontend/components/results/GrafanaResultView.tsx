@@ -1,8 +1,24 @@
 import type React from "react"
+import Image from "next/image"
 import { LineChart } from "@tremor/react"
 
 interface GrafanaResultViewProps {
-  result: any
+  result: {
+    panels?: Array<{
+      title: string
+      imageUrl?: string
+    }>
+    series?: Array<{
+      name?: string
+      points: Array<[number, number]>
+    }>
+    logs?: Array<{
+      timestamp: string | number
+      level: string
+      message: string
+    }>
+    executionTime?: number
+  } | string | null
   queryType: string
 }
 
@@ -12,16 +28,22 @@ const GrafanaResultView: React.FC<GrafanaResultViewProps> = ({ result, queryType
   }
 
   // Handle dashboard panels
-  if (queryType === "dashboard") {
+  if (queryType === "dashboard" && typeof result === 'object' && result !== null) {
     return (
       <div>
         {result.panels && result.panels.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {result.panels.map((panel: any, index: number) => (
+            {result.panels.map((panel, index) => (
               <div key={index} className="border rounded-md p-4">
                 <h3 className="text-sm font-semibold mb-2">{panel.title}</h3>
                 {panel.imageUrl ? (
-                  <img src={panel.imageUrl || "/placeholder.svg"} alt={panel.title} className="max-w-full h-auto" />
+                  <Image 
+                    src={panel.imageUrl || "/placeholder.svg"} 
+                    alt={panel.title} 
+                    width={600}
+                    height={400}
+                    style={{ width: '100%', height: 'auto' }}
+                  />
                 ) : (
                   <div className="text-gray-500 italic">Panel image not available</div>
                 )}
@@ -36,14 +58,14 @@ const GrafanaResultView: React.FC<GrafanaResultViewProps> = ({ result, queryType
   }
 
   // Handle metrics results
-  if (queryType === "metrics") {
+  if (queryType === "metrics" && typeof result === 'object' && result !== null) {
     if (!result.series || !Array.isArray(result.series) || result.series.length === 0) {
       return <div className="text-gray-500 italic">No metrics data available.</div>
     }
 
     // Transform the data for Tremor charts
     const chartData = transformMetricsData(result.series)
-    const categories = result.series.map((s: any) => s.name || "Series")
+    const categories = result.series.map((s) => s.name || "Series")
 
     return (
       <div>
@@ -68,7 +90,7 @@ const GrafanaResultView: React.FC<GrafanaResultViewProps> = ({ result, queryType
   }
 
   // Handle logs results
-  if (queryType === "logs") {
+  if (queryType === "logs" && typeof result === 'object' && result !== null) {
     if (!result.logs || !Array.isArray(result.logs) || result.logs.length === 0) {
       return <div className="text-gray-500 italic">No logs data available.</div>
     }
@@ -76,7 +98,7 @@ const GrafanaResultView: React.FC<GrafanaResultViewProps> = ({ result, queryType
     return (
       <div>
         <div className="bg-gray-900 text-gray-100 p-4 rounded-md font-mono text-sm overflow-x-auto">
-          {result.logs.map((log: any, index: number) => (
+          {result.logs.map((log, index) => (
             <div key={index} className="mb-1 border-b border-gray-700 pb-1">
               <span className="text-gray-400">{new Date(log.timestamp).toISOString()}</span>{" "}
               <span className={`px-1 rounded ${getLogLevelColor(log.level)}`}>{log.level}</span>{" "}
@@ -105,11 +127,11 @@ const GrafanaResultView: React.FC<GrafanaResultViewProps> = ({ result, queryType
 }
 
 // Helper function to transform metrics data for charts
-const transformMetricsData = (series: any[]) => {
+const transformMetricsData = (series: Array<{ name?: string; points: Array<[number, number]> }>) => {
   // Find all unique timestamps across all series
   const allTimestamps = new Set<string>()
   series.forEach((s) => {
-    s.points.forEach((point: any) => {
+    s.points.forEach((point) => {
       allTimestamps.add(new Date(point[0]).toISOString())
     })
   })
@@ -120,7 +142,7 @@ const transformMetricsData = (series: any[]) => {
     const seriesName = s.name || "Series"
     const valueMap = new Map<string, number>()
 
-    s.points.forEach((point: any) => {
+    s.points.forEach((point) => {
       const timestamp = new Date(point[0]).toISOString()
       valueMap.set(timestamp, point[1])
     })
@@ -132,7 +154,7 @@ const transformMetricsData = (series: any[]) => {
   const chartData = Array.from(allTimestamps)
     .sort()
     .map((timestamp) => {
-      const dataPoint: any = { timestamp }
+      const dataPoint: Record<string, string | number | null> = { timestamp }
 
       seriesMap.forEach((valueMap, seriesName) => {
         dataPoint[seriesName] = valueMap.get(timestamp) || null

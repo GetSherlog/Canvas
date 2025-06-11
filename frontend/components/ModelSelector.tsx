@@ -29,19 +29,16 @@ export function ModelSelector({ onModelChange }: ModelSelectorProps) {
 
   // Fetch models and current model on mount
   useEffect(() => {
-    fetchModels()
-  }, [])
-
-  const fetchModels = async () => {
-    try {
-      setIsLoading(true)
-      const [modelsList, current] = await Promise.all([api.models.listModels(), api.models.getCurrentModel()])
-      setModels(modelsList)
-      setCurrentModel(current)
-    } catch (error) {
-      console.error("Failed to fetch models:", error)
-      toast({
-        variant: "destructive",
+    const fetchModels = async () => {
+      try {
+        setIsLoading(true)
+        const [modelsList, current] = await Promise.all([api.models.listModels(), api.models.getCurrentModel()])
+        setModels(modelsList)
+        setCurrentModel(current)
+      } catch (error) {
+        console.error("Failed to fetch models:", error)
+        toast({
+          variant: "destructive",
         title: "Error",
         description: "Failed to load available models.",
       })
@@ -49,6 +46,9 @@ export function ModelSelector({ onModelChange }: ModelSelectorProps) {
       setIsLoading(false)
     }
   }
+    
+    fetchModels()
+  }, [toast])
 
   const handleModelSelect = async (model: Model) => {
     if (model.id === currentModel?.id) return

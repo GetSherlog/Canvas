@@ -3,19 +3,18 @@ Notebook Manager Service
 """
 
 import logging
-import asyncio
 import json # Added
 import time # Added
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Set
 from uuid import UUID, uuid4
 
-from fastapi import Depends, Request
+from fastapi import Request
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import get_settings
-from backend.core.notebook import Notebook, NotebookMetadata, Cell, CellType, CellStatus, DependencyGraph
+from backend.core.notebook import Notebook, NotebookMetadata, DependencyGraph
 from backend.core.cell import Cell, CellType, CellStatus, CellResult
 from backend.core.types import ToolCallID
 from backend.db.repositories import NotebookRepository
@@ -98,6 +97,10 @@ class NotebookManager:
         # Fetch the notebook again using get_notebook to ensure relationships are loaded
         # Pass the ID of the newly created notebook
         notebook = await self.get_notebook(db, UUID(str(db_notebook_created.id)))
+        
+        # Start LogAI MCP server for this notebook
+        await self._start_notebook_server(notebook.id)
+        
         logger.info(f"Successfully created and re-fetched notebook {notebook.id}", extra={'correlation_id': correlation_id})
         return notebook
     
@@ -130,7 +133,7 @@ class NotebookManager:
             # Assuming repository methods called within save are async if needed
             # e.g., if update_cell_order becomes async:
             if notebook.cell_order:
-                str_cell_order = [str(cell_id) for cell_id in notebook.cell_order]
+                # str_cell_order = [str(cell_id) for cell_id in notebook.cell_order]
                 # await repository.update_cell_order(str(notebook_id), str_cell_order)
                 logger.info(f"[{correlation_id}] Placeholder: Would save cell order (async).")
             # Update metadata
@@ -237,6 +240,11 @@ class NotebookManager:
         cell = self._db_cell_to_model(db_cell_with_deps) # Conversion is sync
         
         logger.info(f"Created cell {cell.id} in notebook {notebook_id}")
+        
+        # Notify clients about the new cell
+        if self.notify_callback:
+            await self.notify_callback(notebook_id, cell.model_dump(mode='json'))
+            
         return cell
     
     async def get_cell(self, db: AsyncSession, notebook_id: UUID, cell_id: UUID) -> Cell:
@@ -364,7 +372,7 @@ class NotebookManager:
         """Add a dependency between two cells (async)"""
         repository = NotebookRepository(db)
         # Await async repo call
-        success = await repository.add_dependency(str(dependent_id), str(dependency_id))
+        await repository.add_dependency(str(dependent_id), str(dependency_id))
         logger.info(f"Added dependency from {dependency_id} to {dependent_id} in notebook {notebook_id}")
         
         # TODO: Update Notebook model state if needed
@@ -619,8 +627,14 @@ class NotebookManager:
         try:
             # 1. Fetch the target cell and the full notebook
             report_cell_model = await self.get_cell(db, notebook_id, cell_id)
-            if report_cell_model.type != CellType.INVESTIGATION_REPORT:
-                logger.error(f"Cell {cell_id} is not an investigation report cell. Type: {report_cell_model.type}", extra=log_extra)
+            # Check if this is an investigation report tool cell
+            is_investigation_report = (
+                report_cell_model.type == CellType.TOOL and 
+                (report_cell_model.tool_name == "investigation_report" or 
+                 report_cell_model.metadata.get("original_type") == "investigation_report")
+            )
+            if not is_investigation_report:
+                logger.error(f"Cell {cell_id} is not an investigation report cell. Type: {report_cell_model.type}, tool_name: {report_cell_model.tool_name}", extra=log_extra)
                 # Optionally notify client of error
                 if self.notify_callback:
                     await self.notify_callback(notebook_id, {
@@ -894,3 +908,78 @@ Format as a professional investigation report.
             updated_at=db_cell.updated_at,
             position=db_cell.position
         )
+    
+    async def _start_notebook_server(self, notebook_id: UUID) -> bool:
+        """Start the LogAI MCP server for a notebook"""
+        try:
+            from backend.services.logai_container_manager import get_container_manager
+            from backend.services.connection_manager import get_connection_manager
+            
+            # Get workspace configuration
+            conn_manager = get_connection_manager()
+            workspace_connections = await conn_manager.get_connections_by_type("logai_workspace")
+            
+            if not workspace_connections:
+                logger.warning(f"No workspace configured, cannot start server for notebook {notebook_id}")
+                return False
+            
+            # Use the first (and should be only) workspace configuration
+            workspace_config = workspace_connections[0].config
+            
+            # Start container
+            container_manager = get_container_manager()
+            container_info = await container_manager.start_container(
+                notebook_id=str(notebook_id),
+                config=workspace_config
+            )
+            
+            logger.info(f"Started LogAI MCP server for notebook {notebook_id} at {container_info.sse_url}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to start server for notebook {notebook_id}: {e}", exc_info=True)
+            return False
+    
+    async def stop_notebook_server(self, notebook_id: UUID) -> bool:
+        """Stop the LogAI MCP server for a notebook"""
+        try:
+            from backend.services.logai_container_manager import get_container_manager
+            
+            container_manager = get_container_manager()
+            success = await container_manager.stop_container(str(notebook_id))
+            
+            if success:
+                logger.info(f"Stopped LogAI MCP server for notebook {notebook_id}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Failed to stop server for notebook {notebook_id}: {e}", exc_info=True)
+            return False
+    
+    async def get_notebook_server_status(self, notebook_id: UUID) -> Dict[str, Any]:
+        """Get the status of the LogAI MCP server for a notebook"""
+        try:
+            from backend.services.logai_container_manager import get_container_manager
+            
+            container_manager = get_container_manager()
+            container_info = await container_manager.get_container_info(str(notebook_id))
+            
+            if container_info:
+                return {
+                    "running": True,
+                    "port": container_info.port,
+                    "sse_url": container_info.sse_url,
+                    "started_at": container_info.started_at
+                }
+            else:
+                return {
+                    "running": False
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to get server status for notebook {notebook_id}: {e}", exc_info=True)
+            return {
+                "running": False,
+                "error": str(e)
+            }

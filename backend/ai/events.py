@@ -7,7 +7,7 @@ We now use simple dict-based streaming with Agno instead of 40+ complex event ty
 
 from enum import Enum
 from pydantic import BaseModel, Field
-from typing import Any, Dict, Optional
+from typing import Optional
 from datetime import datetime, timezone
 
 # Keep only the basic enums that might still be referenced during migration

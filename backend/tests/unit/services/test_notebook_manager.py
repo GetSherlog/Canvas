@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.services.notebook_manager import NotebookManager, get_notebook_manager
+from backend.services.notebook_manager import NotebookManager
 from backend.db.repositories import NotebookRepository
-from backend.core.notebook import Notebook, NotebookMetadata, Cell
+from backend.core.notebook import Notebook, Cell
 from backend.core.cell import CellType, CellStatus
 from backend.db.models import Notebook as DBNotebookModel, Cell as DBCellModel # For mocking repository return
 
@@ -156,7 +156,7 @@ async def test_update_cell_content_success(notebook_manager_service: NotebookMan
     """Test successfully updating a cell's content."""
     notebook_id = uuid.uuid4()
     cell_id = uuid.uuid4()
-    original_content = "original content"
+    # original_content = "original content"
     new_content = "new updated content"
     
     mock_repo_instance = MagicMock(spec=NotebookRepository)
@@ -165,7 +165,7 @@ async def test_update_cell_content_success(notebook_manager_service: NotebookMan
     mock_db_cell_updated = DBCellModel( # Using DBCellModel for Cell model structure
         id=str(cell_id),
         notebook_id=str(notebook_id),
-        type=CellType.PYTHON.value,
+        type=CellType.TOOL.value,
         content=new_content, # Should reflect the new content
         tool_call_id=str(uuid.uuid4()),
         status=CellStatus.IDLE.value,
@@ -309,7 +309,7 @@ async def test_update_cell_status_success(notebook_manager_service: NotebookMana
     mock_db_cell_updated = DBCellModel(
         id=str(cell_id),
         notebook_id=str(notebook_id),
-        type=CellType.PYTHON.value,
+        type=CellType.TOOL.value,
         content="some content",
         tool_call_id=str(uuid.uuid4()),
         status=new_status.value, # Reflects the new status
@@ -354,7 +354,7 @@ async def test_update_cell_status_to_queued_adds_to_execution_queue(
     mock_db_cell_updated = DBCellModel(
         id=str(cell_id),
         notebook_id=str(notebook_id),
-        type=CellType.PYTHON.value,
+        type=CellType.TOOL.value,
         content="some content",
         tool_call_id=str(uuid.uuid4()),
         status=new_status.value,

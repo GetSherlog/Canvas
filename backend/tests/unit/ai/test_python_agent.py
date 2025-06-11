@@ -1,12 +1,10 @@
 import pytest
 import os
-import uuid
 from unittest.mock import patch, mock_open, MagicMock
 import tempfile
 
 from backend.ai.python_agent import PythonAgent, IMPORTED_DATA_BASE_PATH
 from backend.ai.models import FileDataRef
-from backend.services.notebook_manager import NotebookManager
 
 # Make PythonAgent importable for tests by temporarily adding to path if needed,
 # or ensure your test runner handles it. For now, assume it's discoverable.

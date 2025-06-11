@@ -1,14 +1,15 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
-import { ShareIcon, CopyIcon, PlayCircleIcon, Database, ChevronsUpDownIcon } from "lucide-react"
+import { useState, useEffect } from "react"
+import { ShareIcon, CopyIcon, PlayCircleIcon, Database, ChevronsUpDownIcon, Server, Loader2 } from "lucide-react"
 import dynamic from 'next/dynamic'
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 // import DataConnectionsDialog from "./DataConnectionsDialog" // Will be dynamically imported
 import { useConnectionStore } from "@/store/connectionStore"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { useInvestigationEventsSimple } from "@/hooks/useInvestigationEventsSimple"
 
 const DataConnectionsDialog = dynamic(() => import('./DataConnectionsDialog'), {
   ssr: false,
@@ -17,19 +18,74 @@ const DataConnectionsDialog = dynamic(() => import('./DataConnectionsDialog'), {
 
 interface CanvasHeaderProps {
   name: string
+  notebookId?: string
   onNameChange: (newName: string) => void
 }
 
-const CanvasHeader: React.FC<CanvasHeaderProps> = ({ name, onNameChange }) => {
+const CanvasHeader: React.FC<CanvasHeaderProps> = ({ name, notebookId, onNameChange }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editedName, setEditedName] = useState(name)
+  
+  // Update editedName when name prop changes
+  useEffect(() => {
+    setEditedName(name)
+  }, [name])
   const [isConnectionsDialogOpen, setIsConnectionsDialogOpen] = useState(false)
+  const [serverStatus, setServerStatus] = useState<{ running: boolean; loading?: boolean }>({ running: false })
   const { connections, mcpStatuses } = useConnectionStore()
   const areAllCellsExpanded = useConnectionStore((state) => state.areAllCellsExpanded)
   const toggleAllCellsExpanded = useConnectionStore((state) => state.toggleAllCellsExpanded)
+  
+  // Use the investigation events hook for WebSocket status
+  const { wsStatus, isInvestigationRunning, currentStatus } = useInvestigationEventsSimple(notebookId || '')
 
   // Count active connections
   const activeConnections = connections.filter((conn) => mcpStatuses[conn.id]?.status === "running").length
+
+  // Check server status periodically
+  useEffect(() => {
+    if (!notebookId) return
+
+    const checkServerStatus = async () => {
+      try {
+        const { notebooks } = await import('@/api/notebooks')
+        const status = await notebooks.getServerStatus(notebookId)
+        setServerStatus({ running: status.running })
+      } catch (error) {
+        console.error('Failed to check server status:', error)
+        setServerStatus({ running: false })
+      }
+    }
+
+    // Check immediately
+    checkServerStatus()
+
+    // Check every 5 seconds
+    const interval = setInterval(checkServerStatus, 5000)
+
+    return () => clearInterval(interval)
+  }, [notebookId])
+
+  const handleServerToggle = async () => {
+    if (!notebookId || serverStatus.loading) return
+
+    setServerStatus(prev => ({ ...prev, loading: true }))
+
+    try {
+      const { notebooks } = await import('@/api/notebooks')
+      
+      if (serverStatus.running) {
+        await notebooks.stopServer(notebookId)
+        setServerStatus({ running: false, loading: false })
+      } else {
+        await notebooks.startServer(notebookId)
+        setServerStatus({ running: true, loading: false })
+      }
+    } catch (error) {
+      console.error('Failed to toggle server:', error)
+      setServerStatus(prev => ({ ...prev, loading: false }))
+    }
+  }
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setEditedName(e.target.value)
@@ -52,11 +108,46 @@ const CanvasHeader: React.FC<CanvasHeaderProps> = ({ name, onNameChange }) => {
           autoFocus
         />
       ) : (
-        <h1 className="text-2xl font-bold cursor-pointer" onClick={() => setIsEditing(true)}>
-          {name}
-        </h1>
+        <div className="flex items-center">
+          <h1 className="text-2xl font-bold cursor-pointer" onClick={() => setIsEditing(true)}>
+            {name}
+          </h1>
+          <div className="ml-4 flex items-center flex-shrink-0">
+            <div
+              className={`w-2 h-2 rounded-full mr-2 ${
+                wsStatus === "connected" ? "bg-green-500" : wsStatus === "connecting" ? "bg-yellow-500" : "bg-red-500"
+              }`}
+            ></div>
+            <span className="text-xs text-gray-500 mr-4">
+              {wsStatus === "connected" ? "Connected" : wsStatus === "connecting" ? "Connecting..." : "Disconnected"}
+            </span>
+
+            {isInvestigationRunning && (
+              <div className="flex items-center">
+                <div className="animate-spin h-3 w-3 border-2 border-purple-500 rounded-full border-t-transparent mr-2"></div>
+                <span className="text-xs text-purple-700">{currentStatus || "Investigation in progress..."}</span>
+              </div>
+            )}
+          </div>
+        </div>
       )}
       <div className="flex items-center space-x-4">
+        {notebookId && (
+          <Button
+            variant={serverStatus.running ? "default" : "outline"}
+            size="sm"
+            onClick={handleServerToggle}
+            disabled={serverStatus.loading}
+            className="flex items-center gap-2"
+          >
+            {serverStatus.loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Server className="h-4 w-4" />
+            )}
+            <span>{serverStatus.running ? "Server Running" : "Server Stopped"}</span>
+          </Button>
+        )}
         <Button
           variant="outline"
           size="sm"

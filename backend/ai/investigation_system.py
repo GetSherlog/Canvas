@@ -3,8 +3,8 @@ Investigation System using MCP Integration
 Simplified investigation system that orchestrates AI agents with MCP tools.
 """
 import logging
-import os
-from typing import Any, Dict, List, Optional, AsyncGenerator, Union, Callable, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Union, Callable, TYPE_CHECKING, cast
+from collections.abc import AsyncGenerator
 
 from agno.agent import Agent
 from agno.team import Team
@@ -13,11 +13,10 @@ from agno.tools.mcp import MCPTools
 from agno.tools.reasoning import ReasoningTools
 from agno.memory.v2.db.sqlite import SqliteMemoryDb
 from agno.memory.v2.memory import Memory
-from mcp import StdioServerParameters
 
 from backend.config import get_settings
 from backend.services.connection_manager import ConnectionManager, get_connection_manager
-from backend.services.connection_handlers.registry import get_handler
+from backend.ai.cell_creating_tools import create_cell_creating_tools
 
 # Import media analysis components
 from backend.ai.media_describer_agent import MediaDescriberAgent
@@ -66,84 +65,56 @@ class InvestigationSystem:
             add_instructions=True,  # Add reasoning instructions to agents
         )
     
-    async def _create_mcp_tools_from_connection(self, connection_type: str) -> Optional[MCPTools]:
-        """Create MCPTools from existing connection configuration"""
+    async def _create_unified_logai_mcp(self) -> Optional[MCPTools]:
+        """Create unified LogAI MCP client that connects to the notebook's streamable HTTP server"""
         try:
-            default_conn = await self.connection_manager.get_default_connection(connection_type)
-            if not default_conn or not default_conn.config:
-                logger.warning(f"No default {connection_type} connection found")
+            if not self.settings.logai_mcp_enabled:
+                logger.info("LogAI MCP is disabled in settings")
                 return None
-
-            handler = get_handler(connection_type)
-            stdio_params = handler.get_stdio_params(default_conn.config)
             
-            # Create StdioServerParameters for MCP Tools
-            server_params = StdioServerParameters(
-                command=stdio_params.command,
-                args=stdio_params.args,
-                env=stdio_params.env
+            # Get the notebook's container info
+            from backend.services.logai_container_manager import get_container_manager
+            container_manager = get_container_manager()
+            
+            # Try to get existing container info
+            container_info = await container_manager.get_container_info(self.notebook_id)
+            
+            if not container_info:
+                # Start a new container if one doesn't exist
+                # Get workspace configuration
+                workspace_connections = await self.connection_manager.get_all_connections()
+                workspace_configs = [c for c in workspace_connections if c.get("type") == "logai_workspace"]
+                
+                if not workspace_configs:
+                    logger.warning("No workspace configuration found. Cannot start LogAI MCP server.")
+                    return None
+                
+                # Use the first workspace configuration
+                workspace_config = workspace_configs[0].get("config", {})
+                container_info = await container_manager.start_container(self.notebook_id, workspace_config)
+            
+            # Create MCPTools with streamable HTTP transport
+            mcp_url = f"http://localhost:{container_info.port}/mcp"
+            logger.info(f"Creating MCPTools with streamable HTTP at {mcp_url}")
+            
+            # Create MCPTools instance with streamable HTTP transport
+            mcp_tools = MCPTools(
+                url=mcp_url,
+                transport="streamable-http",
+                timeout_seconds=30
             )
             
-            logger.info(f"Created MCP tools for {connection_type}: {stdio_params.command} {stdio_params.args}")
-            return MCPTools(server_params=server_params)
+            logger.info(f"Successfully created unified LogAI MCP client for notebook {self.notebook_id}")
+            return mcp_tools
             
         except Exception as e:
-            logger.error(f"Failed to create MCP tools for {connection_type}: {e}", exc_info=True)
+            logger.error(f"Failed to create unified LogAI MCP client: {e}", exc_info=True)
             return None
-    
-    async def _create_hardcoded_mcp_tools(self) -> Dict[str, Optional[MCPTools]]:
-        """Create MCP tools for services that use hardcoded configurations"""
-        tools = {}
-        
-        # Python MCP (Data Science server)
-        try:
-            python_params = StdioServerParameters(
-                command='/root/.local/bin/uv',
-                args=[
-                    '--directory',
-                    '/opt/mcp-server-data-exploration',
-                    'run',
-                    'mcp-server-ds'
-                ],
-                env=os.environ.copy()
-            )
-            tools['python'] = MCPTools(server_params=python_params)
-            logger.info("Created Python MCP tools for data science server")
-        except Exception as e:
-            logger.error(f"Failed to create Python MCP tools: {e}")
-            tools['python'] = None
-        
-        # LogAI MCP (Docker-based)
-        try:
-            env_copy = os.environ.copy()
-            docker_args = [
-                "run", "--rm", "-i",
-                "--volume=/var/run/docker.sock:/var/run/docker.sock"
-            ]
-            
-            host_fs_root = os.environ.get("SHERLOG_HOST_FS_ROOT")
-            if host_fs_root:
-                docker_args.extend(["-v", f"{host_fs_root}:{host_fs_root}:ro"])
-            
-            docker_args.append("ghcr.io/navneet-mkr/logai-mcp:0.1.3")
-            
-            logai_params = StdioServerParameters(
-                command="docker",
-                args=docker_args,
-                env=env_copy
-            )
-            tools['logai'] = MCPTools(server_params=logai_params)
-            logger.info("Created LogAI MCP tools")
-        except Exception as e:
-            logger.error(f"Failed to create LogAI MCP tools: {e}")
-            tools['logai'] = None
-        
-        return tools
     
     async def _create_notebook_tools(self) -> List[Callable]:
         """Create notebook-specific tools for investigation agents"""
         
-        def add_markdown_cell(content: str, title: str = "Analysis") -> str:
+        def add_markdown_cell(title: str = "Analysis") -> str:
             """Add a markdown cell to the notebook"""
             try:
                 logger.info(f"Adding markdown cell: {title}")
@@ -154,7 +125,7 @@ class InvestigationSystem:
                 logger.error(f"Failed to add markdown cell: {e}")
                 return f"Error adding cell: {e}"
         
-        def add_code_cell(code: str, language: str = "python") -> str:
+        def add_code_cell(language: str = "python") -> str:
             """Add a code cell to the notebook"""
             try:
                 logger.info(f"Adding {language} code cell")
@@ -210,17 +181,13 @@ class InvestigationSystem:
         return run_media_analysis_workflow
 
     async def initialize_agents(self) -> Dict[str, Agent]:
-        """Initialize specialized agents using existing MCP infrastructure with reasoning capabilities"""
+        """Initialize specialized agents using unified LogAI MCP server with reasoning capabilities"""
         
-        # Get MCP tools from existing connections
-        github_mcp = await self._create_mcp_tools_from_connection("github")
-        filesystem_mcp = await self._create_mcp_tools_from_connection("filesystem") 
-        qdrant_mcp = await self._create_mcp_tools_from_connection("git_repo")  # Qdrant via git_repo
-        
-        # Get hardcoded MCP tools
-        hardcoded_tools = await self._create_hardcoded_mcp_tools()
-        python_mcp = hardcoded_tools.get('python')
-        logai_mcp = hardcoded_tools.get('logai')
+        # Create single unified LogAI MCP instance
+        unified_mcp = await self._create_unified_logai_mcp()
+        if not unified_mcp:
+            logger.error("Failed to create unified LogAI MCP server")
+            return {}
         
         # Get notebook tools, media workflow tool, and reasoning tools
         notebook_tools = await self._create_notebook_tools()
@@ -230,157 +197,190 @@ class InvestigationSystem:
         agents = {}
         
         # GitHub Research Agent
-        if github_mcp:
-            agent_tools: List[Any] = []
-            agent_tools.append(reasoning_tools)  # Add reasoning first
-            agent_tools.append(github_mcp)
-            agent_tools.extend(notebook_tools)
-            
-            agents['github'] = Agent(
-                name="GitHub Researcher",
-                role="Expert at searching and analyzing GitHub repositories, issues, and code with systematic reasoning",
-                model=OpenRouter(
-                    id="openai/gpt-4.1",  # Updated to GPT 4.1
-                    api_key=self.settings.openrouter_api_key
-                ),
-                tools=agent_tools,
-                instructions=[
-                    "Use reasoning tools to think through complex problems systematically",
-                    "Search for relevant repositories, issues, and code examples",
-                    "Analyze code quality, patterns, and potential issues", 
-                    "Look for similar problems and their solutions",
-                    "Provide actionable insights with specific examples",
-                    "Create notebook cells with your findings"
-                ],
-                add_datetime_to_instructions=True,
-                markdown=True,
-                show_tool_calls=True
-            )
-            logger.info("Created GitHub research agent with reasoning tools and GPT 4.1")
+        # Wrap unified MCP tools to create cells automatically for GitHub agent
+        wrapped_github_tools = create_cell_creating_tools(
+            unified_mcp, 
+            self.notebook_id, 
+            self.notebook_manager, 
+            "github"
+        )
         
-        # Filesystem Analysis Agent  
-        if filesystem_mcp:
-            agent_tools: List[Any] = []
-            agent_tools.append(reasoning_tools)  # Add reasoning first
-            agent_tools.append(filesystem_mcp)
-            agent_tools.extend(notebook_tools)
-            
-            agents['filesystem'] = Agent(
-                name="Filesystem Analyzer",
-                role="Expert at analyzing local files, directories, and code structures with methodical reasoning", 
-                model=OpenRouter(
-                    id="openai/gpt-4.1",  # Updated to GPT 4.1
-                    api_key=self.settings.openrouter_api_key
-                ),
-                tools=agent_tools,
-                instructions=[
-                    "Apply systematic reasoning to file and code analysis",
-                    "Analyze file structures and code organization",
-                    "Identify potential issues in configuration files",
-                    "Examine log files for errors and patterns",
-                    "Suggest improvements to project structure",
-                    "Document findings in notebook cells"
-                ],
-                add_datetime_to_instructions=True,
-                markdown=True,
-                show_tool_calls=True
-            )
-            logger.info("Created filesystem analysis agent with reasoning tools and GPT 4.1")
+        agent_tools: List[Any] = []
+        agent_tools.append(reasoning_tools)  # Add reasoning first
+        agent_tools.append(wrapped_github_tools)  # Use wrapped unified tools
+        agent_tools.extend(notebook_tools)
         
-        # Code Search Agent (Qdrant)
-        if qdrant_mcp:
-            agent_tools: List[Any] = []
-            agent_tools.append(reasoning_tools)  # Add reasoning first
-            agent_tools.append(qdrant_mcp)
-            agent_tools.extend(notebook_tools)
-            
-            agents['code_search'] = Agent(
-                name="Code Search Specialist", 
-                role="Expert at semantic code search and analysis using vector databases with logical reasoning",
-                model=OpenRouter(
-                    id="openai/gpt-4.1",  # Updated to GPT 4.1
-                    api_key=self.settings.openrouter_api_key
-                ),
-                tools=agent_tools,
-                instructions=[
-                    "Use reasoning tools to approach code search systematically",
-                    "Perform semantic searches across codebases",
-                    "Find relevant code patterns and examples",
-                    "Analyze code similarity and relationships", 
-                    "Provide context-aware code recommendations",
-                    "Create detailed analysis in notebook cells"
-                ],
-                add_datetime_to_instructions=True,
-                markdown=True,
-                show_tool_calls=True
-            )
-            logger.info("Created code search agent with reasoning tools and GPT 4.1")
+        agents['github'] = Agent(
+            name="GitHub Researcher",
+            role="Expert at searching and analyzing GitHub repositories, issues, and code with systematic reasoning",
+            model=OpenRouter(
+                id="openai/gpt-4.1",  # Updated to GPT 4.1
+                api_key=self.settings.openrouter_api_key
+            ),
+            tools=agent_tools,
+            instructions=[
+                "Use reasoning tools to think through complex problems systematically",
+                "Search for relevant repositories, issues, and code examples",
+                "Analyze code quality, patterns, and potential issues", 
+                "Look for similar problems and their solutions",
+                "Provide actionable insights with specific examples",
+                "Results will be automatically saved to notebook cells"
+            ],
+            add_datetime_to_instructions=True,
+            markdown=True,
+            show_tool_calls=True
+        )
+        logger.info("Created GitHub research agent with unified LogAI MCP tools")
+        
+        # Filesystem Analysis Agent
+        # Wrap unified MCP tools to create cells automatically for filesystem agent
+        wrapped_fs_tools = create_cell_creating_tools(
+            unified_mcp,
+            self.notebook_id,
+            self.notebook_manager,
+            "filesystem"
+        )
+        
+        agent_tools_fs: List[Any] = []
+        agent_tools_fs.append(reasoning_tools)  # Add reasoning first
+        agent_tools_fs.append(wrapped_fs_tools)  # Use wrapped unified tools
+        agent_tools_fs.extend(notebook_tools)
+        
+        agents['filesystem'] = Agent(
+            name="Filesystem Analyzer",
+            role="Expert at analyzing local files, directories, and code structures with methodical reasoning", 
+            model=OpenRouter(
+                id="openai/gpt-4.1",  # Updated to GPT 4.1
+                api_key=self.settings.openrouter_api_key
+            ),
+            tools=agent_tools_fs,
+            instructions=[
+                "Apply systematic reasoning to file and code analysis",
+                "Analyze file structures and code organization",
+                "Identify potential issues in configuration files",
+                "Examine log files for errors and patterns",
+                "Suggest improvements to project structure",
+                "Document findings in notebook cells"
+            ],
+            add_datetime_to_instructions=True,
+            markdown=True,
+            show_tool_calls=True
+        )
+        logger.info("Created filesystem analysis agent with unified LogAI MCP tools")
+        
+        # Code Search Agent
+        # Wrap unified MCP tools to create cells automatically for code search agent
+        wrapped_code_search_tools = create_cell_creating_tools(
+            unified_mcp,
+            self.notebook_id,
+            self.notebook_manager,
+            "code_search"
+        )
+        
+        agent_tools_code: List[Any] = []
+        agent_tools_code.append(reasoning_tools)  # Add reasoning first
+        agent_tools_code.append(wrapped_code_search_tools)  # Use wrapped unified tools
+        agent_tools_code.extend(notebook_tools)
+        
+        agents['code_search'] = Agent(
+            name="Code Search Specialist", 
+            role="Expert at semantic code search and analysis using vector databases with logical reasoning",
+            model=OpenRouter(
+                id="openai/gpt-4.1",  # Updated to GPT 4.1
+                api_key=self.settings.openrouter_api_key
+            ),
+            tools=agent_tools_code,
+            instructions=[
+                "Use reasoning tools to approach code search systematically",
+                "Perform semantic searches across codebases",
+                "Find relevant code patterns and examples",
+                "Analyze code similarity and relationships", 
+                "Provide context-aware code recommendations",
+                "Create detailed analysis in notebook cells"
+            ],
+            add_datetime_to_instructions=True,
+            markdown=True,
+            show_tool_calls=True
+        )
+        logger.info("Created code search agent with unified LogAI MCP tools")
         
         # Python Data Analysis Agent
-        if python_mcp:
-            agent_tools: List[Any] = []
-            agent_tools.append(reasoning_tools)  # Add reasoning first
-            agent_tools.append(python_mcp)
-            agent_tools.extend(notebook_tools)
-            
-            agents['python'] = Agent(
-                name="Python Data Analyst",
-                role="Expert at executing Python code and analyzing data with systematic reasoning",
-                model=OpenRouter(
-                    id="openai/gpt-4.1",  # Updated to GPT 4.1
-                    api_key=self.settings.openrouter_api_key
-                ), 
-                tools=agent_tools,
-                instructions=[
-                    "Apply reasoning tools to break down complex data analysis tasks",
-                    "Execute Python code for data analysis and exploration",
-                    "Create visualizations and statistical summaries",
-                    "Debug and troubleshoot Python code issues",
-                    "Suggest optimizations and best practices",
-                    "Document results in notebook cells"
-                ],
-                add_datetime_to_instructions=True,
-                markdown=True,
-                show_tool_calls=True
-            )
-            logger.info("Created Python analysis agent with reasoning tools and GPT 4.1")
+        # Wrap unified MCP tools to create cells automatically for Python agent
+        wrapped_python_tools = create_cell_creating_tools(
+            unified_mcp,
+            self.notebook_id,
+            self.notebook_manager,
+            "python"
+        )
+        
+        agent_tools_python: List[Any] = []
+        agent_tools_python.append(reasoning_tools)  # Add reasoning first
+        agent_tools_python.append(wrapped_python_tools)  # Use wrapped unified tools
+        agent_tools_python.extend(notebook_tools)
+        
+        agents['python'] = Agent(
+            name="Python Data Analyst",
+            role="Expert at executing Python code and analyzing data with systematic reasoning",
+            model=OpenRouter(
+                id="openai/gpt-4.1",  # Updated to GPT 4.1
+                api_key=self.settings.openrouter_api_key
+            ), 
+            tools=agent_tools_python,
+            instructions=[
+                "Apply reasoning tools to break down complex data analysis tasks",
+                "Execute Python code for data analysis and exploration",
+                "Create visualizations and statistical summaries",
+                "Debug and troubleshoot Python code issues",
+                "Suggest optimizations and best practices",
+                "Document results in notebook cells"
+            ],
+            add_datetime_to_instructions=True,
+            markdown=True,
+            show_tool_calls=True
+        )
+        logger.info("Created Python analysis agent with unified LogAI MCP tools")
         
         # Log Analysis Agent
-        if logai_mcp:
-            agent_tools: List[Any] = []
-            agent_tools.append(reasoning_tools)  # Add reasoning first
-            agent_tools.append(logai_mcp)
-            agent_tools.extend(notebook_tools)
-            
-            agents['logai'] = Agent(
-                name="Log Analysis Specialist",
-                role="Expert at analyzing software logs for patterns and anomalies with methodical reasoning", 
-                model=OpenRouter(
-                    id="openai/gpt-4.1",  # Updated to GPT 4.1
-                    api_key=self.settings.openrouter_api_key
-                ),
-                tools=agent_tools,
-                instructions=[
-                    "Use reasoning tools to systematically analyze log patterns",
-                    "Analyze log files for errors, patterns, and anomalies",
-                    "Perform log clustering and classification",
-                    "Detect unusual patterns or potential issues",
-                    "Provide insights on system health and performance",
-                    "Create detailed log analysis reports"
-                ],
-                add_datetime_to_instructions=True,
-                markdown=True,
-                show_tool_calls=True
-            )
-            logger.info("Created log analysis agent with reasoning tools and GPT 4.1")
+        # Wrap unified MCP tools to create cells automatically for log analysis agent
+        wrapped_logai_tools = create_cell_creating_tools(
+            unified_mcp,
+            self.notebook_id,
+            self.notebook_manager,
+            "logai"
+        )
         
-        # Media Analysis Agent - uses the workflow tool
+        agent_tools_logai: List[Any] = []
+        agent_tools_logai.append(reasoning_tools)  # Add reasoning first
+        agent_tools_logai.append(wrapped_logai_tools)  # Use wrapped unified tools
+        agent_tools_logai.extend(notebook_tools)
+        
+        agents['logai'] = Agent(
+            name="Log Analysis Specialist",
+            role="Expert at analyzing software logs for patterns and anomalies with methodical reasoning", 
+            model=OpenRouter(
+                id="openai/gpt-4.1",  # Updated to GPT 4.1
+                api_key=self.settings.openrouter_api_key
+            ),
+            tools=agent_tools_logai,
+            instructions=[
+                "Use reasoning tools to systematically analyze log patterns",
+                "Analyze log files for errors, patterns, and anomalies",
+                "Perform log clustering and classification",
+                "Detect unusual patterns or potential issues",
+                "Provide insights on system health and performance",
+                "Create detailed log analysis reports"
+            ],
+            add_datetime_to_instructions=True,
+            markdown=True,
+            show_tool_calls=True
+        )
+        logger.info("Created log analysis agent with unified LogAI MCP tools")
+        
+        # Media Analysis Agent - uses the workflow tool and unified MCP
         agent_tools_media: List[Any] = [reasoning_tools, media_workflow_tool]  # Add reasoning first
         agent_tools_media.extend(notebook_tools)
-        if github_mcp:
-            agent_tools_media.append(github_mcp)
-        if filesystem_mcp:
-            agent_tools_media.append(filesystem_mcp)
+        # Add the unified MCP without wrapping for media agent (for additional context if needed)
+        agent_tools_media.append(unified_mcp)
             
         agents['media'] = Agent(
             name="Visual Bug Investigator",
@@ -467,7 +467,6 @@ class InvestigationSystem:
         available_agents = [agent for agent in agents.values() if agent is not None]
         if available_agents:
             # Convert to the expected Union type for Team members
-            from typing import cast
             team_members: List[Union[Agent, Team]] = cast(List[Union[Agent, Team]], available_agents)
             
             teams['investigation'] = Team(
@@ -732,9 +731,38 @@ Please generate a comprehensive investigation report with:
                 for response in report_iterator:
                     report_response = response
                 
+                # Create a markdown cell with the final report
+                final_content = report_response.content if report_response and hasattr(report_response, 'content') else "Report generation completed"
+                
+                try:
+                    # Use HTTP API to create the final report cell
+                    import aiohttp
+                    async with aiohttp.ClientSession() as session:
+                        api_base_url = f"http://localhost:{self.settings.api_port}/api/v1"
+                        url = f"{api_base_url}/notebooks/{self.notebook_id}/cells/from-tool"
+                        payload = {
+                            "tool_name": "final_report",
+                            "tool_args": {"query": query},
+                            "result": final_content,
+                            "agent_type": "reporter",
+                            "metadata": {
+                                "investigation_type": investigation_type,
+                                "is_final_report": True
+                            }
+                        }
+                        
+                        async with session.post(url, json=payload) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                logger.info(f"Created final report cell {data.get('id')}")
+                            else:
+                                logger.error(f"Failed to create final report cell: {response.status}")
+                except Exception as e:
+                    logger.error(f"Failed to create final report cell: {e}")
+                
                 yield {
                     "type": "final_report",
-                    "content": report_response.content if report_response and hasattr(report_response, 'content') else "Report generation completed",
+                    "content": final_content,
                     "final": True
                 }
             

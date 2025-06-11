@@ -168,6 +168,33 @@ Sherlog Canvas uses MCP servers for data source integration.
 3. Click "Add Connection" and select the connection type
 4. Provide the connection details
 
+### LogAI MCP Server
+
+The LogAI MCP server provides advanced log analysis capabilities within Sherlog Canvas. It's enabled by default and runs as a Docker container.
+
+#### Configuration Options
+
+- **SHERLOG_LOGAI_MCP_ENABLED**: Set to `false` to disable the LogAI MCP server
+- **SHERLOG_LOGAI_MCP_COMMAND**: Use `docker` (default) or `npx` to run the server
+- **SHERLOG_LOGAI_MCP_IMAGE**: Docker image to use (default: `ghcr.io/getsherlog/mcp-sherlog-log-analysis:latest`)
+- **SHERLOG_LOGAI_MCP_GITHUB_TOKEN**: Optional GitHub token for GitHub-based operations
+- **SHERLOG_LOGAI_MCP_MOUNT_DIR**: Optional host directory to mount for log file access
+- **SHERLOG_LOGAI_MCP_EXTRA_ARGS**: Additional Docker arguments as a JSON array (e.g., `["--network", "host"]`)
+
+#### Usage Example
+
+To mount a local directory containing logs:
+
+```env
+SHERLOG_LOGAI_MCP_MOUNT_DIR=/var/logs/myapp
+```
+
+To use a custom Docker network:
+
+```env
+SHERLOG_LOGAI_MCP_EXTRA_ARGS=["--network", "my-custom-network"]
+```
+
 
 
 ## Core Concepts
@@ -234,3 +261,10 @@ Configuration is managed through environment variables with the `SHERLOG_` prefi
 | `SHERLOG_PYTHON_CELL_TIMEOUT` | Timeout for Python cell execution (seconds) | `30` |
 | `SHERLOG_PYTHON_CELL_MAX_MEMORY` | Max memory for Python cell execution (MB) | `1024` |
 | `SHERLOG_DEFAULT_QUERY_TIMEOUT` | Default timeout for database queries (seconds) | `30` |
+| `SHERLOG_LOGAI_MCP_ENABLED` | Enable LogAI MCP server | `true` |
+| `SHERLOG_LOGAI_MCP_COMMAND` | Command to run LogAI MCP (docker or npx) | `docker` |
+| `SHERLOG_LOGAI_MCP_IMAGE` | Docker image for LogAI MCP | `ghcr.io/getsherlog/mcp-sherlog-log-analysis:latest` |
+| `SHERLOG_LOGAI_MCP_GITHUB_TOKEN` | GitHub token for GitHub operations (optional) | *(none)* |
+| `SHERLOG_LOGAI_MCP_WORKING_DIR` | Working directory inside container | `/workspace` |
+| `SHERLOG_LOGAI_MCP_MOUNT_DIR` | Host directory to mount (optional) | *(none)* |
+| `SHERLOG_LOGAI_MCP_EXTRA_ARGS` | Extra docker arguments as JSON array (optional) | `[]` |

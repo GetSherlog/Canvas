@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import List
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     debug: bool = False
     # CORS settings
-    cors_origins: List[str] = ["*"]
+    cors_origins: list[str] = ["*"]
     # Authentication settings (for future use)
     auth_enabled: bool = False
     # AI settings
@@ -44,29 +44,36 @@ class Settings(BaseSettings):
     python_cell_max_memory: int = 1024  # MB
     # Query execution settings
     default_query_timeout: int = 30  # seconds
-    # Qdrant MCP Server (uvx/stdio) settings
-    qdrant_mcp_enabled: bool = True # Control whether to launch the stdio server
-    qdrant_local_path: str | None = None # Path for local Qdrant storage (required if enabled)
-    qdrant_collection_name: str = "git_repo" # Optional default collection name
-    qdrant_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2" # Default embedding model
-
+    
+    # LogAI MCP Server settings
+    logai_mcp_enabled: bool = True
+    logai_mcp_command: str = "docker"  # Command to run LogAI MCP
+    logai_mcp_image: str = "ghcr.io/getsherlog/mcp-sherlog-log-analysis:latest"
+    logai_mcp_github_token: Optional[str] = None  # GitHub token for GitHub operations
+    logai_mcp_working_dir: str = "/workspace"  # Working directory inside container
+    logai_mcp_mount_dir: Optional[str] = None  # Host directory to mount
+    logai_mcp_extra_args: list[str] = []  # Extra docker arguments
+    
+    # Environment settings
+    environment_vars: dict = {}
+    
     model_config = SettingsConfigDict(
-        env_prefix="SHERLOG_",
         env_file=".env",
         env_file_encoding="utf-8",
-        env_nested_delimiter="__"
+        case_sensitive=False,
+        env_prefix="SHERLOG_",
     )
-
+    
     @property
     def database_url(self) -> str:
-        """Get the database connection URL"""
+        """Get the database URL based on db_type"""
         if self.db_type == "sqlite":
             return f"sqlite:///{self.db_file}"
-        else:
+        elif self.db_type == "postgresql":
             return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        else:
+            raise ValueError(f"Unsupported database type: {self.db_type}")
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
-    """Get cached settings instance"""
-    settings = Settings()
-    return settings
+    return Settings()

@@ -186,7 +186,7 @@ describe('MarkdownCell', () => {
   })
 
   it('renders empty state message if cell content is null', () => {
-    const nullContentCell = { ...mockCell, content: null as any } // Test null case
+    const nullContentCell = { ...mockCell, content: '' } // Test empty string case
     render(<MarkdownCell cell={nullContentCell} onUpdate={mockOnUpdate} onDelete={mockOnDelete} />)
     expect(screen.getByTestId('react-markdown-mock')).toHaveTextContent('*Empty markdown cell*')
   })

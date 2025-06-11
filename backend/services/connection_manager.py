@@ -4,16 +4,14 @@ Connection Manager Service
 Manages connections to data sources via MCP servers
 """
 
-import json
 import logging
 import os
-from typing import Dict, List, Optional, Tuple, Union, Any
+from typing import Dict, List, Optional, Tuple, Any
 from uuid import uuid4
 import asyncio
 from asyncio import Lock  # For Log-AI tool list cache locking
 
 from pydantic import BaseModel, Field, ValidationError
-import aiofiles
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -330,13 +328,13 @@ class ConnectionManager:
                  logger.error(f"Database error creating connection {name} ({type}): {db_e}", extra={'correlation_id': correlation_id}, exc_info=True)
                  # Make common DB errors more user-friendly if possible
                  if "unique constraint" in str(db_e).lower():
-                      raise ValueError(f"Database error: A connection with similar properties might already exist.")
+                      raise ValueError("Database error: A connection with similar properties might already exist.")
                  raise ValueError(f"Database error creating connection: {str(db_e)}") from db_e
 
         # Add to in-memory cache
         self.connections[connection.id] = connection
 
-        # Perform post-creation actions (like indexing for git_repo)
+        # Perform post-creation actions
         try:
             logger.info(f"Executing post-create actions for connection {connection.id} of type {type}", extra={'correlation_id': correlation_id})
             # Schedule as a background task so it doesn't block the API response
@@ -575,7 +573,7 @@ class ConnectionManager:
             # Use the handler's prepare_config logic as the test mechanism.
             # This ensures the same validation path (including MCP checks) is used.
             # Pass the validated test_data model directly.
-            logger.info(f"Attempting prepare_config via handler for test...", extra={'correlation_id': correlation_id})
+            logger.info("Attempting prepare_config via handler for test...", extra={'correlation_id': correlation_id})
             await handler.prepare_config(
                 connection_id=None, # Not updating an existing connection
                 input_data=config_data, 
@@ -722,7 +720,7 @@ class ConnectionManager:
         logger.info(f"Fetching tools for connection type: {connection_type}", extra={'correlation_id': correlation_id})
 
         if connection_type == "python":
-            logger.info(f"Handling special case for 'python' tool type discovery.", extra={'correlation_id': correlation_id})
+            logger.info("Handling special case for 'python' tool type discovery.", extra={'correlation_id': correlation_id})
             # Define tools and their schemas directly here.
             # This schema should align with what PythonCell.tsx expects for its form rendering.
             python_tools = [
@@ -768,68 +766,6 @@ class ConnectionManager:
             logger.info(f"Returning {len(python_tools)} predefined Python tools.", extra={'correlation_id': correlation_id})
             return python_tools
 
-        # --- New: static tool definitions for Git Repo / Qdrant MCP ----
-        if connection_type == "git_repo":
-            logger.info(f"Handling special case for 'git_repo' (Qdrant MCP) tool type discovery.", extra={'correlation_id': correlation_id})
-            qdrant_tools = [
-                MCPToolInfo(
-                    name="qdrant-find",
-                    description="Semantic search over a Qdrant collection.",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "title": "Search Query",
-                                "description": "Natural language search query to execute.",
-                                "format": "textarea"
-                            },
-                            "collection_name": {
-                                "type": "string",
-                                "title": "Collection Name",
-                                "description": "Name of the Qdrant collection to search."
-                            },
-                            "limit": {
-                                "type": "integer",
-                                "title": "Limit",
-                                "description": "Maximum number of results to return.",
-                                "default": 5,
-                                "minimum": 1
-                            }
-                        },
-                        "required": ["query", "collection_name"]
-                    }
-                ),
-                MCPToolInfo(
-                    name="qdrant-store",
-                    description="Store (upsert) a document into a Qdrant collection.",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "information": {
-                                "type": "string",
-                                "title": "Information Text",
-                                "description": "The text or document content to store.",
-                                "format": "textarea"
-                            },
-                            "metadata": {
-                                "type": "object",
-                                "title": "Metadata",
-                                "description": "Arbitrary metadata describing the document.",
-                                "additionalProperties": True
-                            },
-                            "collection_name": {
-                                "type": "string",
-                                "title": "Collection Name",
-                                "description": "Name of the Qdrant collection to store the document in."
-                            }
-                        },
-                        "required": ["information", "collection_name"]
-                    }
-                )
-            ]
-            logger.info(f"Returning {len(qdrant_tools)} predefined Qdrant tools for git_repo.", extra={'correlation_id': correlation_id})
-            return qdrant_tools
 
         # --- LogAI (FastMCP) virtual connection type --------------------------------------
         if connection_type == "log_ai":
@@ -875,10 +811,10 @@ class ConnectionManager:
                 # Add volume mount if SHERLOG_HOST_FS_ROOT is set
                 host_fs_root = os.environ.get("SHERLOG_HOST_FS_ROOT")
                 if host_fs_root:
-                    docker_args.append(f"-v")
+                    docker_args.append("-v")
                     docker_args.append(f"{host_fs_root}:{host_fs_root}:ro")
 
-                docker_args.append("ghcr.io/navneet-mkr/logai-mcp:0.1.3")
+                docker_args.append("ghcr.io/navneet-mkr/logai-mcp:0.1.5")
 
                 # Run the Log-AI MCP via published Docker image instead of building it on the fly
                 server_params = StdioServerParameters(
@@ -937,6 +873,11 @@ class ConnectionManager:
                     exc_info=True,
                 )
                 raise ValueError(f"Failed to communicate with Log-AI MCP server: {e}")
+
+        # Special handling for workspace configuration - no tools needed
+        if connection_type == "logai_workspace":
+            logger.info("Workspace configuration doesn't provide tools - tools are available when notebooks are opened", extra={'correlation_id': correlation_id})
+            return []  # Empty list - no tools for workspace config itself
 
         # Existing logic for MCP-based connections:
         default_conn = await self.get_default_connection(connection_type)

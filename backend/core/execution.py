@@ -1,33 +1,23 @@
 import asyncio
 import time
+import traceback
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Dict, Optional, Set
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from backend.core.cell import Cell, CellStatus, CellType, GitHubCell
+from backend.core.cell import Cell, CellStatus, CellType
 from backend.core.notebook import Notebook
-from backend.core.dependency import ToolCallID
 from backend.services.connection_manager import ConnectionManager, get_connection_manager
-from backend.core.cell import GitHubCell
-from mcp.client.stdio import stdio_client # Reverted import style
+from mcp.client.streamable_http import streamablehttp_client
 from mcp import ClientSession
 from mcp.shared.exceptions import McpError
 import logging
-import os # Import os module
-import json # Ensure json is imported
+import json
 
-# Import StdioServerParameters
-from mcp import StdioServerParameters
-# Import handler registry
-from backend.services.connection_handlers.registry import get_handler
 # Import settings
 from backend.config import get_settings
-# Assuming ErrorData is here (adjust if necessary)
-from mcp.types import ErrorData
 # Import DB session management
 from backend.db.database import get_db_session 
 
@@ -293,7 +283,7 @@ class CellExecutor:
             notebook=notebook,
             cell_id=cell_id,
             variables=dependency_results,
-            settings=get_settings().dict() # Pass current settings
+            settings=get_settings().model_dump() # Pass current settings
         )
         
         # 5. Execute Based on Type
@@ -460,194 +450,86 @@ class CellExecutor:
         if cell.type == CellType.MARKDOWN:
             return cell.content
         
-        elif cell.type == CellType.SUMMARIZATION:
-            return cell.content
-
-        elif cell.type == CellType.PYTHON:
-            self.logger.info(f"Executing Python cell {cell.id} using mcp-server-data-exploration.", extra={'correlation_id': correlation_id, 'cell_id': cell.id})
-            python_code = cell.content
-            if not python_code:
-                self.logger.warning(f"Python cell {cell.id} is empty.", extra={'correlation_id': correlation_id, 'cell_id': cell.id})
-                return {"status": "success", "stdout": "", "stderr": None} # Or an error?
-
-            # Get StdioServerParameters for mcp-server-data-exploration
-            # This is similar to PythonAgent._get_stdio_server_params
-            # TODO: Consider refactoring to a shared utility if this pattern repeats
-            env = os.environ.copy()
-            server_params = StdioServerParameters(
-                command='/root/.local/bin/uv',
-                args=[
-                    '--directory',
-                    '/opt/mcp-server-data-exploration',
-                    'run',
-                    'mcp-server-ds' 
-                ],
-                env=env
-            )
+        elif cell.type == CellType.TOOL:
+            # Check if this is a display-only tool cell
+            if cell.tool_name == "summarization":
+                return cell.content
             
-            # Create a client session for this execution
-            # The MCPServerStdio instance from pydantic-ai is for agent use.
-            # For direct client calls, we use mcp.client.stdio.stdio_client
-            try:
-                async with stdio_client(server_params) as (read, write):
-                    async with ClientSession(read, write) as session:
-                        self.logger.info(f"Calling 'run-script' for Python cell {cell.id} with code: '''{python_code[:200]}...'''", extra={'correlation_id': correlation_id, 'cell_id': cell.id})
-                        await session.initialize()
-                        response = await session.call_tool(
-                            "run-script",
-                            arguments={"script": python_code},
-                        )
-                        self.logger.info(f"Received response from 'run-script' for Python cell {cell.id}. Response type: {type(response)}, Response: {str(response)[:500]}...", extra={'correlation_id': correlation_id, 'cell_id': cell.id})
-                        
-                        # We can adapt PythonAgent's _parse_python_mcp_output or simplify
-                        if isinstance(response, dict):
-                            # Basic parsing, similar to a simplified _parse_python_mcp_output
-                            parsed_result = {
-                                "status": response.get("status", "success" if response.get("stdout") is not None else "error"),
-                                "stdout": response.get("stdout"),
-                                "stderr": response.get("stderr"),
-                                # Add other fields if mcp-server-data-exploration provides them
-                            }
-                            if parsed_result["status"] == "error" and parsed_result["stderr"] and not response.get("error_details"):
-                                parsed_result["error_details"] = {
-                                    "type": "PythonExecutionError",
-                                    "message": str(parsed_result["stderr"]).splitlines()[-1] if parsed_result["stderr"] else "Unknown Python error",
-                                    "traceback": str(parsed_result["stderr"])
-                                }
-                            return parsed_result
-                        else:
-                            # Fallback if response is not a dict (e.g., just a string)
-                            self.logger.warning(f"Unexpected response type from 'run-script' for cell {cell.id}: {type(response)}. Treating as stdout.", extra={'correlation_id': correlation_id, 'cell_id': cell.id})
-                            return {"status": "success", "stdout": str(response), "stderr": None}
-
-            except McpError as mcp_e:
-                self.logger.error(f"McpError during Python cell {cell.id} execution: {mcp_e}", exc_info=True, extra={'correlation_id': correlation_id, 'cell_id': cell.id})
-                raise # Re-raise to be caught by the outer try-except
-            except Exception as e:
-                self.logger.error(f"Unexpected error during Python cell {cell.id} execution with mcp-server-data-exploration: {e}", exc_info=True, extra={'correlation_id': correlation_id, 'cell_id': cell.id})
-                raise # Re-raise to be caught by the outer try-except
-        
-        elif cell.type == CellType.LOG_AI:
-            # Execute Log-AI tool calls (FastMCP server)
-            self.logger.info(f"Executing Log-AI cell {cell.id} via logai MCP server.", extra={'correlation_id': correlation_id, 'cell_id': cell.id})
-
-            # For Log-AI cells we expect they encode a tool call directly (tool_name + tool_arguments)
+            # All tool executions go through the LogAI MCP server
             if not cell.tool_name:
-                raise ValueError("Log-AI cell requires tool_name to be set.")
-
-            docker_args = [
-                'run',
-                '--rm',
-                '-i', # Keep STDIN open for MCP protocol
-                "--volume=/var/run/docker.sock:/var/run/docker.sock",
-            ]
-
-            host_fs_root = os.environ.get("SHERLOG_HOST_FS_ROOT")
-            if host_fs_root:
-                docker_args.append("-v")
-                docker_args.append(f"{host_fs_root}:{host_fs_root}:ro")
-
-            docker_args.append('ghcr.io/navneet-mkr/logai-mcp:0.1.3')
-
-            server_params = StdioServerParameters(
-                command='docker',
-                args=docker_args,
-                env=os.environ.copy()
-            )
-
+                self.logger.warning(f"Tool cell {cell.id} has no tool_name. Returning content.", extra={'cell_id': cell.id})
+                return cell.content
+            
+            self.logger.info(f"Executing tool '{cell.tool_name}' for cell {cell.id} via LogAI MCP server", extra={'correlation_id': correlation_id, 'cell_id': cell.id})
+            
+            # Get the LogAI container info for this notebook
+            from backend.services.logai_container_manager import get_container_manager
+            container_manager = get_container_manager()
+            container_info = await container_manager.get_container_info(str(context.notebook.id))
+            
+            if not container_info:
+                # Start a new container if one doesn't exist
+                # Get workspace configuration for this notebook
+                connections = await self.connection_manager.get_all_connections()
+                workspace_connections = [c for c in connections if c.get("type") == "logai_workspace"]
+                if not workspace_connections:
+                    raise ValueError("No workspace configuration found. Please configure workspace settings first.")
+                
+                # Use the first workspace configuration
+                workspace_config = workspace_connections[0].get("config", {})
+                container_info = await container_manager.start_container(str(context.notebook.id), workspace_config)
+            
+            # Use streamable HTTP client to connect to the container
+            mcp_url = f"http://localhost:{container_info.port}/mcp"
+            self.logger.info(f"Connecting to LogAI MCP server at {mcp_url}", extra={'correlation_id': correlation_id, 'cell_id': cell.id})
+            
             try:
-                async with stdio_client(server_params) as (read, write):
-                    async with ClientSession(read, write) as session:
+                async with streamablehttp_client(mcp_url) as (read_stream, write_stream, _):
+                    async with ClientSession(read_stream, write_stream) as session:
                         await session.initialize()
-                        tool_args_to_log = cell.tool_arguments or {}
-                        self.logger.info(f"Calling Log-AI tool '{cell.tool_name}' for cell {cell.id} with arguments: {json.dumps(tool_args_to_log, indent=2)}", extra={'correlation_id': correlation_id, 'cell_id': cell.id})
-                        mcp_result = await session.call_tool(cell.tool_name, arguments=tool_args_to_log)
-                        # Log the type and a snippet of the mcp_result
-                        result_type_log = type(mcp_result).__name__
-                        result_snippet_log = str(mcp_result)[:500] # Log first 500 chars
-                        if isinstance(mcp_result, (dict, list)):
-                            try:
-                                result_snippet_log = json.dumps(mcp_result, indent=2)[:500] + ("..." if len(json.dumps(mcp_result, default=str)) > 500 else "")
-                            except TypeError: # Handle non-serializable content within dict/list
-                                pass # Keep str() version
                         
-                        self.logger.info(f"Log-AI tool '{cell.tool_name}' call completed for cell {cell.id}. Result type: {result_type_log}, Result: {result_snippet_log}", extra={'correlation_id': correlation_id, 'cell_id': cell.id})
-                        return mcp_result
+                        # Prepare tool arguments
+                        tool_args = cell.tool_arguments or {}
+                        
+                        # Special handling for Python cells - use execute_python tool
+                        if cell.tool_name == "python" or (cell.metadata and cell.metadata.get('original_type') == 'python'):
+                            tool_name = "execute_python"
+                            tool_args = {"code": cell.content or ""}
+                        else:
+                            tool_name = cell.tool_name
+                        
+                        self.logger.info(f"Calling tool '{tool_name}' with arguments: {json.dumps(tool_args, indent=2)[:500]}...", extra={'correlation_id': correlation_id, 'cell_id': cell.id})
+                        
+                        # Call the tool
+                        result = await session.call_tool(tool_name, arguments=tool_args)
+                        
+                        # Log result
+                        result_type = type(result).__name__
+                        result_snippet = str(result)[:500]
+                        if isinstance(result, (dict, list)):
+                            try:
+                                result_snippet = json.dumps(result, indent=2)[:500]
+                                if len(json.dumps(result, default=str)) > 500:
+                                    result_snippet += "..."
+                            except TypeError:
+                                pass  # Keep str() version
+                        
+                        self.logger.info(f"Tool '{tool_name}' completed. Result type: {result_type}, Result: {result_snippet}", extra={'correlation_id': correlation_id, 'cell_id': cell.id})
+                        return result
+                        
             except McpError as mcp_e:
-                # Access McpError attributes correctly
                 error_message = getattr(mcp_e, 'message', str(mcp_e))
                 error_code = getattr(mcp_e, 'code', 'N/A')
                 error_details = getattr(mcp_e, 'details', None)
-                self.logger.error(f"Log-AI MCPError during execution for cell {cell.id}, tool '{cell.tool_name}': {error_message} (Code: {error_code}, Details: {error_details})", exc_info=True, extra={'correlation_id': correlation_id, 'cell_id': cell.id})
-                # Ensure the McpError itself is raised so it can be handled specifically if needed
-                # and its details are preserved for the cell's error field.
-                raise 
+                self.logger.error(f"MCPError during tool execution: {error_message} (Code: {error_code}, Details: {error_details})", exc_info=True, extra={'correlation_id': correlation_id, 'cell_id': cell.id, 'tool_name': cell.tool_name})
+                raise
             except Exception as e:
-                self.logger.error(f"Unexpected error during Log-AI MCP execution for cell {cell.id}, tool '{cell.tool_name}': {e}", exc_info=True, extra={'correlation_id': correlation_id, 'cell_id': cell.id})
+                self.logger.error(f"Unexpected error during tool execution: {e}", exc_info=True, extra={'correlation_id': correlation_id, 'cell_id': cell.id, 'tool_name': cell.tool_name})
                 raise
         
-        # Check if this cell represents a tool call (This is the original logic for other tool calls)
-        elif cell.tool_name and cell.tool_arguments is not None:
-            tool_name = cell.tool_name
-            tool_args = cell.tool_arguments
-            connection_id = cell.connection_id 
-
-            if not connection_id:
-                error_msg = f"Cell {cell.id} (type: {cell.type}) requires a connection_id but none was found."
-                self.logger.error(error_msg, extra={'correlation_id': correlation_id, 'cell_id': cell.id})
-                raise ValueError(error_msg)
-
-            # Fetch connection details using ConnectionManager
-            connection_config = await self.connection_manager.get_connection(str(connection_id))
-            if not connection_config:
-                error_msg = f"Failed to get connection details for ID {connection_id}."
-                self.logger.error(error_msg, extra={'correlation_id': correlation_id, 'cell_id': cell.id, 'connection_id': connection_id})
-                raise ConnectionError(error_msg)
-            
-            if not connection_config.config:
-                error_msg = f"Connection config is missing for ID {connection_id}."
-                self.logger.error(error_msg, extra={'correlation_id': correlation_id, 'cell_id': cell.id, 'connection_id': connection_id})
-                raise ConnectionError(error_msg)
-
-            # Get the appropriate handler based on connection type
-            try:
-                handler = get_handler(connection_config.type)
-            except ValueError as e:
-                error_msg = f"No connection handler found for type '{connection_config.type}' (connection: {connection_id}): {e}"
-                self.logger.error(error_msg, extra={'correlation_id': correlation_id, 'cell_id': cell.id, 'connection_id': connection_id, 'connection_type': connection_config.type})
-                raise NotImplementedError(error_msg)
-
-            # Delegate execution to the handler
-            try:
-                self.logger.info(f"Delegating tool execution to handler: {handler.__class__.__name__}", extra={'correlation_id': correlation_id, 'cell_id': cell.id, 'tool_name': tool_name, 'connection_type': connection_config.type})
-                mcp_result = await handler.execute_tool_call(
-                    tool_name=tool_name,
-                    tool_args=tool_args,
-                    db_config=connection_config.config,
-                    correlation_id=correlation_id
-                )
-                self.logger.info(f"Handler execution successful for cell {cell.id}. Result type: {type(mcp_result)}", extra={'correlation_id': correlation_id})
-                return mcp_result
-            except (ValueError, ConnectionError, McpError, NotImplementedError) as handler_error:
-                 # Errors related to config, connection, or tool execution within the handler
-                 error_msg = f"Handler error executing tool '{tool_name}' for cell {cell.id}: {handler_error}"
-                 self.logger.error(error_msg, exc_info=True, extra={'correlation_id': correlation_id, 'cell_id': cell.id, 'tool_name': tool_name, 'error_type': type(handler_error).__name__})
-                 raise # Re-raise the specific error from the handler
-            except Exception as unexpected_handler_error:
-                 # Catch-all for truly unexpected errors within the handler
-                 error_msg = f"Unexpected handler error executing tool '{tool_name}' for cell {cell.id}: {unexpected_handler_error}"
-                 self.logger.error(error_msg, exc_info=True, extra={'correlation_id': correlation_id, 'cell_id': cell.id, 'tool_name': tool_name})
-                 raise Exception(error_msg) from unexpected_handler_error # Wrap in generic Exception
-            
-            # --- Remove Old GitHub specific logic --- 
-            # if cell.type == CellType.GITHUB: 
-            #    ... (old logic was here) ...
-            # else:
-            #     raise NotImplementedError(f"Execution via MCP not implemented for cell type/source: {cell.type}")
-
         else:
-            self.logger.warning(f"Cell {cell.id} of type {cell.type} has no execution logic defined and is not a tool call. Returning content.", extra={'cell_id': cell.id})
-            return cell.content # Default fallback
+            self.logger.warning(f"Cell {cell.id} of type {cell.type} has no execution logic defined. Returning content.", extra={'cell_id': cell.id})
+            return cell.content
     
     def _get_dependency_results(self, notebook: Notebook, cell_id: UUID) -> Dict[str, Any]:
         """
@@ -672,4 +554,3 @@ class CellExecutor:
         return variables
 
 # --- Utility ---
-import traceback # Moved import here to be closer to usage

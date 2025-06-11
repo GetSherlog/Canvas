@@ -11,7 +11,7 @@ import uuid
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.sql import table, column
-from sqlalchemy import String, UUID, select, text
+from sqlalchemy import String, UUID, select
 
 
 # revision identifiers, used by Alembic.
@@ -41,7 +41,7 @@ def upgrade() -> None:
     )
     
     # Select rows where tool_call_id is NULL
-    select_stmt = select(cells_table.c.id).where(cells_table.c.tool_call_id == None)
+    select_stmt = select(cells_table.c.id).where(cells_table.c.tool_call_id.is_(None))
     results = bind.execute(select_stmt).fetchall()
     
     print(f"Found {len(results)} cells with NULL tool_call_id to update.")
@@ -53,7 +53,7 @@ def upgrade() -> None:
         update_stmt = cells_table.update().where(cells_table.c.id == cell_id).values(tool_call_id=new_uuid)
         bind.execute(update_stmt)
         
-    print(f"Finished updating NULL tool_call_id values.")
+    print("Finished updating NULL tool_call_id values.")
 
     # Step 3: Alter column to be non-nullable
     # Use batch mode for SQLite compatibility

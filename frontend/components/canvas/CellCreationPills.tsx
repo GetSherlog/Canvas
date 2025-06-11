@@ -6,14 +6,14 @@ import { Plus, FileText, Github, Folder, CodeIcon, ActivityIcon } from "lucide-r
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 interface CellCreationPillsProps {
-  onAddCell: (type: string) => void
+  onAddCell: (type: string, toolName?: string) => void
 }
 
 export default function CellCreationPills({ onAddCell }: CellCreationPillsProps) {
   const [isOpen, setIsOpen] = useState(false)
 
-  const handleAddCell = (type: string) => {
-    onAddCell(type)
+  const handleAddCell = (type: string, toolName?: string) => {
+    onAddCell(type, toolName)
     setIsOpen(false)
   }
 
@@ -42,7 +42,7 @@ export default function CellCreationPills({ onAddCell }: CellCreationPillsProps)
             <Button
               variant="ghost"
               className="flex justify-start items-center px-2 py-1 text-sm hover:bg-blue-50 transition-colors duration-200"
-              onClick={() => handleAddCell("github")}
+              onClick={() => handleAddCell("tool", "github")}
             >
               <Github className="h-4 w-4 mr-2 text-gray-500" />
               <span>Github Tool</span>
@@ -50,7 +50,7 @@ export default function CellCreationPills({ onAddCell }: CellCreationPillsProps)
             <Button
               variant="ghost"
               className="flex justify-start items-center px-2 py-1 text-sm hover:bg-blue-50 transition-colors duration-200"
-              onClick={() => handleAddCell("filesystem")}
+              onClick={() => handleAddCell("tool", "filesystem")}
             >
               <Folder className="h-4 w-4 mr-2 text-green-500" />
               <span>Filesystem</span>
@@ -58,7 +58,7 @@ export default function CellCreationPills({ onAddCell }: CellCreationPillsProps)
             <Button
               variant="ghost"
               className="flex justify-start items-center px-2 py-1 text-sm hover:bg-emerald-50 transition-colors duration-200"
-              onClick={() => handleAddCell("python")}
+              onClick={() => handleAddCell("tool", "python")}
             >
               <CodeIcon className="h-4 w-4 mr-2 text-emerald-700" />
               <span>Python Code</span>
@@ -66,7 +66,7 @@ export default function CellCreationPills({ onAddCell }: CellCreationPillsProps)
             <Button
               variant="ghost"
               className="flex justify-start items-center px-2 py-1 text-sm hover:bg-purple-50 transition-colors duration-200"
-              onClick={() => handleAddCell("log_ai")}
+              onClick={() => handleAddCell("tool", "log_ai")}
             >
               <ActivityIcon className="h-4 w-4 mr-2 text-purple-700" />
               <span>Log-AI</span>

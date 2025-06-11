@@ -1,6 +1,6 @@
 import axios from "axios"
 import { BACKEND_URL } from "@/config/api-config"
-import { chatApi } from "./chat"
+import { chatAPI } from "./chatSimple"
 import { notebooks } from "./notebooks"
 import { models } from "./models"
 import { connections } from "./connections"
@@ -109,7 +109,7 @@ export const api = {
   cells,
 
   // Chat operations
-  chat: chatApi,
+  chat: chatAPI,
 }
 
 export type Notebook = any
