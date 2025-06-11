@@ -2,19 +2,13 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { ShareIcon, CopyIcon, PlayCircleIcon, Database, ChevronsUpDownIcon, Server, Loader2 } from "lucide-react"
+import { ShareIcon, CopyIcon, PlayCircleIcon, ChevronsUpDownIcon, Server, Loader2 } from "lucide-react"
 import dynamic from 'next/dynamic'
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-// import DataConnectionsDialog from "./DataConnectionsDialog" // Will be dynamically imported
 import { useConnectionStore } from "@/store/connectionStore"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInvestigationEventsSimple } from "@/hooks/useInvestigationEventsSimple"
-
-const DataConnectionsDialog = dynamic(() => import('./DataConnectionsDialog'), {
-  ssr: false,
-  loading: () => null, // Or a proper loading skeleton/spinner
-});
 
 interface CanvasHeaderProps {
   name: string
@@ -30,8 +24,7 @@ const CanvasHeader: React.FC<CanvasHeaderProps> = ({ name, notebookId, onNameCha
   useEffect(() => {
     setEditedName(name)
   }, [name])
-  const [isConnectionsDialogOpen, setIsConnectionsDialogOpen] = useState(false)
-  const [serverStatus, setServerStatus] = useState<{ running: boolean; loading?: boolean }>({ running: false })
+  const [serverStatus, setServerStatus] = useState<{ running: boolean; loading?: boolean; starting?: boolean }>({ running: false })
   const { connections, mcpStatuses } = useConnectionStore()
   const areAllCellsExpanded = useConnectionStore((state) => state.areAllCellsExpanded)
   const toggleAllCellsExpanded = useConnectionStore((state) => state.toggleAllCellsExpanded)
@@ -50,10 +43,15 @@ const CanvasHeader: React.FC<CanvasHeaderProps> = ({ name, notebookId, onNameCha
       try {
         const { notebooks } = await import('@/api/notebooks')
         const status = await notebooks.getServerStatus(notebookId)
-        setServerStatus({ running: status.running })
+        setServerStatus(prev => ({ 
+          ...prev, 
+          running: status.running,
+          starting: status.starting || false,
+          loading: false 
+        }))
       } catch (error) {
         console.error('Failed to check server status:', error)
-        setServerStatus({ running: false })
+        setServerStatus({ running: false, starting: false, loading: false })
       }
     }
 
@@ -76,10 +74,23 @@ const CanvasHeader: React.FC<CanvasHeaderProps> = ({ name, notebookId, onNameCha
       
       if (serverStatus.running) {
         await notebooks.stopServer(notebookId)
-        setServerStatus({ running: false, loading: false })
+        setServerStatus({ running: false, loading: false, starting: false })
       } else {
+        setServerStatus({ running: false, loading: true, starting: true })
         await notebooks.startServer(notebookId)
-        setServerStatus({ running: true, loading: false })
+        // Keep checking status until server is ready
+        const checkInterval = setInterval(async () => {
+          const status = await notebooks.getServerStatus(notebookId)
+          if (status.running) {
+            clearInterval(checkInterval)
+            setServerStatus({ running: true, loading: false, starting: false })
+          }
+        }, 1000)
+        // Timeout after 60 seconds
+        setTimeout(() => {
+          clearInterval(checkInterval)
+          setServerStatus(prev => ({ ...prev, loading: false, starting: false }))
+        }, 60000)
       }
     } catch (error) {
       console.error('Failed to toggle server:', error)
@@ -134,34 +145,26 @@ const CanvasHeader: React.FC<CanvasHeaderProps> = ({ name, notebookId, onNameCha
       <div className="flex items-center space-x-4">
         {notebookId && (
           <Button
-            variant={serverStatus.running ? "default" : "outline"}
+            variant={serverStatus.running ? "default" : serverStatus.starting ? "secondary" : "outline"}
             size="sm"
             onClick={handleServerToggle}
             disabled={serverStatus.loading}
             className="flex items-center gap-2"
           >
-            {serverStatus.loading ? (
+            {serverStatus.loading || serverStatus.starting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Server className="h-4 w-4" />
             )}
-            <span>{serverStatus.running ? "Server Running" : "Server Stopped"}</span>
+            <span>
+              {serverStatus.starting 
+                ? "Starting Server..." 
+                : serverStatus.running 
+                ? "Server Running" 
+                : "Server Stopped"}
+            </span>
           </Button>
         )}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setIsConnectionsDialogOpen(true)}
-          className="flex items-center gap-2"
-        >
-          <Database className="h-4 w-4" />
-          <span>Data Connections</span>
-          {activeConnections > 0 && (
-            <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-medium bg-primary text-primary-foreground rounded-full">
-              {activeConnections}
-            </span>
-          )}
-        </Button>
         <div className="flex -space-x-2">
           <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
             NM
@@ -216,7 +219,6 @@ const CanvasHeader: React.FC<CanvasHeaderProps> = ({ name, notebookId, onNameCha
         </div>
       </div>
 
-      <DataConnectionsDialog isOpen={isConnectionsDialogOpen} onClose={() => setIsConnectionsDialogOpen(false)} />
     </div>
   )
 }

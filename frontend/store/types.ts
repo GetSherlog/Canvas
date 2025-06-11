@@ -77,7 +77,7 @@ export const NotebookSchema = z.object({
 export type Notebook = z.infer<typeof NotebookSchema>
 
 // --- Update: Remove 'grafana' and 'python' from ConnectionTypeSchema ---
-export const ConnectionTypeSchema = z.enum(["github", "jira", "filesystem", "git_repo"]) // Added "git_repo"
+export const ConnectionTypeSchema = z.enum(["github", "jira", "filesystem", "git_repo", "logai_workspace"]) // Added "git_repo" and "logai_workspace"
 export type ConnectionType = z.infer<typeof ConnectionTypeSchema>
 
 export const ConnectionSchema = z.object({

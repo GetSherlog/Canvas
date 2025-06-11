@@ -37,7 +37,15 @@ class CellCreatingMCPTools:
         self.settings = get_settings()
         
         # API endpoint for creating cells
-        self.api_base_url = f"http://localhost:{self.settings.api_port}/api/v1"
+        # When running in Docker, use the service name 'backend' instead of localhost
+        # Check if we're running in Docker by looking for common Docker environment variables
+        import os
+        if os.environ.get('HOSTNAME') and 'sherlog' in os.environ.get('HOSTNAME', ''):
+            # We're in Docker, use the service name
+            self.api_base_url = f"http://backend:{self.settings.api_port}/api/v1"
+        else:
+            # We're running locally
+            self.api_base_url = f"http://localhost:{self.settings.api_port}/api/v1"
         
         # Wrap all tool methods
         self._wrap_tools()

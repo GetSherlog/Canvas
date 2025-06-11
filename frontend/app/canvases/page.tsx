@@ -274,8 +274,8 @@ export default function CanvasesPage() {
     loadConnections,
   } = useConnectionStore()
 
-  const hasWorkspace = connections.some(c => c.type === 'workspace');
-  const existingWorkspace = connections.find(c => c.type === 'workspace');
+  const hasWorkspace = connections.some(c => c.type === 'logai_workspace');
+  const existingWorkspace = connections.find(c => c.type === 'logai_workspace');
 
   // Fetch canvases
   useEffect(() => {
