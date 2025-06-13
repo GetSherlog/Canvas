@@ -27,18 +27,26 @@ def to_chat_message(data: Any) -> ChatMessage:
     if isinstance(data, ChatMessage):
         return data
     elif isinstance(data, dict):
+        # Get content and handle None case properly
+        content = data.get("content")
+        if content is None:
+            content = ""
+        else:
+            content = str(content)
+        
         return ChatMessage(
             role=data.get("role", "model"),
-            content=str(data.get("content", "")),
+            content=content,
             timestamp=data.get("timestamp", datetime.now(timezone.utc).isoformat()),
             id=data.get("id"),
             agent=data.get("agent", "investigation")
         )
     else:
         # Handle other response types by converting to dict-like format
+        content = "" if data is None else str(data)
         return ChatMessage(
             role="model",
-            content=str(data),
+            content=content,
             timestamp=datetime.now(timezone.utc).isoformat(),
             agent="investigation"
         )

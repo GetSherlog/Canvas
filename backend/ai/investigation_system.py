@@ -94,7 +94,7 @@ class InvestigationSystem:
                 container_info = await container_manager.start_container(self.notebook_id, workspace_config)
             
             # Create MCPTools with streamable HTTP transport
-            mcp_url = f"http://localhost:{container_info.port}/mcp"
+            mcp_url = f"http://localhost:{container_info.port}/mcp/"
             logger.info(f"Creating MCPTools with streamable HTTP at {mcp_url}")
             
             # Create MCPTools instance with streamable HTTP transport
@@ -694,11 +694,16 @@ Please conduct a thorough investigation and provide actionable insights.
             for response in response_iterator:
                 final_response = response
                 # Stream intermediate results if available
-                yield {
-                    "type": "investigation_progress",
-                    "content": response.content if hasattr(response, 'content') else str(response),
-                    "team": team.name
-                }
+                # Only yield if there's actual content to show
+                if hasattr(response, 'content') and response.content:
+                    yield {
+                        "type": "investigation_progress",
+                        "content": response.content,
+                        "team": team.name
+                    }
+                # Log responses without content for debugging
+                else:
+                    logger.debug(f"Skipping response without content: {type(response)}")
             
             # Generate final report if we have a reporter
             if 'reporter' in agents and agents['reporter']:

@@ -54,6 +54,19 @@ class Settings(BaseSettings):
     logai_mcp_mount_dir: Optional[str] = None  # Host directory to mount
     logai_mcp_extra_args: list[str] = []  # Extra docker arguments
     
+    # LogAI MCP Integration settings (v0.1.6)
+    logai_mcp_grafana_url: Optional[str] = None
+    logai_mcp_grafana_token: Optional[str] = None
+    logai_mcp_prometheus_url: Optional[str] = None
+    logai_mcp_loki_url: Optional[str] = None
+    logai_mcp_aws_access_key: Optional[str] = None
+    logai_mcp_aws_secret_key: Optional[str] = None
+    logai_mcp_aws_region: str = "us-east-1"
+    logai_mcp_sentry_auth_token: Optional[str] = None
+    logai_mcp_sentry_org: Optional[str] = None
+    logai_mcp_mixpanel_token: Optional[str] = None
+    logai_mcp_external_mcp_servers: list[dict] = []
+    
     # Environment settings
     environment_vars: dict = {}
     

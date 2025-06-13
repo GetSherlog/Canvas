@@ -133,11 +133,36 @@ class WorkspaceConnectionHandler(MCPConnectionHandler):
         if config.github_token:
             env["GITHUB_TOKEN"] = config.github_token
         
+        # Add all LogAI MCP integration environment variables
+        if settings.logai_mcp_grafana_url:
+            env["GRAFANA_URL"] = settings.logai_mcp_grafana_url
+        if settings.logai_mcp_grafana_token:
+            env["GRAFANA_TOKEN"] = settings.logai_mcp_grafana_token
+        if settings.logai_mcp_prometheus_url:
+            env["PROMETHEUS_URL"] = settings.logai_mcp_prometheus_url
+        if settings.logai_mcp_loki_url:
+            env["LOKI_URL"] = settings.logai_mcp_loki_url
+        if settings.logai_mcp_aws_access_key:
+            env["AWS_ACCESS_KEY_ID"] = settings.logai_mcp_aws_access_key
+        if settings.logai_mcp_aws_secret_key:
+            env["AWS_SECRET_ACCESS_KEY"] = settings.logai_mcp_aws_secret_key
+        if settings.logai_mcp_aws_region:
+            env["AWS_DEFAULT_REGION"] = settings.logai_mcp_aws_region
+        if settings.logai_mcp_sentry_auth_token:
+            env["SENTRY_AUTH_TOKEN"] = settings.logai_mcp_sentry_auth_token
+        if settings.logai_mcp_sentry_org:
+            env["SENTRY_ORG"] = settings.logai_mcp_sentry_org
+        if settings.logai_mcp_mixpanel_token:
+            env["MIXPANEL_TOKEN"] = settings.logai_mcp_mixpanel_token
+        
         # Build Docker arguments
         docker_args = ["run", "--rm", "-i"]
         
         # Add Docker socket for nested operations
         docker_args.extend(["--volume=/var/run/docker.sock:/var/run/docker.sock"])
+        
+        # Add network mode for external service access
+        docker_args.extend(["--network", "host"])
         
         # Mount filesystem paths
         for path in config.filesystem_paths:

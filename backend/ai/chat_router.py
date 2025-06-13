@@ -354,12 +354,15 @@ Respond ONLY with valid JSON in this exact format:
                     }
                 
                 elif result["type"] == "investigation_progress":
-                    yield "assistant", {
-                        "role": "assistant",
-                        "content": result.get("content", ""),
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "agent": result.get("team", "investigation")
-                    }
+                    # Only yield if there's actual content
+                    content = result.get("content", "")
+                    if content:  # Skip empty content
+                        yield "assistant", {
+                            "role": "assistant",
+                            "content": content,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "agent": result.get("team", "investigation")
+                        }
                 
                 elif result["type"] == "final_report":
                     yield "assistant", {
